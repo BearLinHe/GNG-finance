@@ -3,7 +3,8 @@ import {
   getSourceContainerExpenseFacts,
   getSourceContainerProfile,
   getSourceInitialBillExact,
-  getSourceOperationMonthAllocations
+  getSourceOperationMonthAllocations,
+  getSourceOperationPeriodAllocations
 } from "@/lib/source-db";
 import {
   getBillsBySourceOrderIds,
@@ -53,7 +54,19 @@ export async function GET(request: Request) {
       rejectionTrips: [],
       deliveryTrips: profile.deliveryTrips
     };
-    const [unloadMonthAllocations, directMonthAllocations] = await Promise.all([
+    const expensePeriods = expenseStandards
+      .filter((standard) => standard.standard_kind === "monthly"
+        && standard.application_rule === "monthly_prorated"
+        && standard.period_start
+        && standard.period_end
+        && standard.operation_mode)
+      .map((standard) => ({
+        operationMode: standard.operation_mode!,
+        key: `${standard.operation_mode}:${standard.period_start}:${standard.period_end}`,
+        startDate: standard.period_start!,
+        endDate: standard.period_end!
+      }));
+    const [unloadMonthAllocations, directMonthAllocations, unloadPeriodAllocations, directPeriodAllocations] = await Promise.all([
       getSourceOperationMonthAllocations(
         "unload",
         profile.plannedUnloadAt ? [profile.plannedUnloadAt.slice(0, 7)] : []
@@ -61,13 +74,22 @@ export async function GET(request: Request) {
       getSourceOperationMonthAllocations(
         "direct_delivery",
         profile.pickupDate ? [profile.pickupDate.slice(0, 7)] : []
-      )
+      ),
+      getSourceOperationPeriodAllocations("unload", expensePeriods.filter((period) => period.operationMode === "unload")),
+      getSourceOperationPeriodAllocations("direct_delivery", expensePeriods.filter((period) => period.operationMode === "direct_delivery"))
     ]);
     const unloadMonthlyAllocation = unloadMonthAllocations.get(profile.sourceOrderId);
     const directMonthlyAllocation = directMonthAllocations.get(profile.sourceOrderId);
     const monthlyAllocation = profile.operationMode === "direct_delivery"
       ? directMonthlyAllocation
       : unloadMonthlyAllocation;
+    const periodAllocations: Record<string, { containerCount: number; position: number }> = {};
+    for (const allocations of [unloadPeriodAllocations, directPeriodAllocations]) {
+      allocations.forEach((values, key) => {
+        const value = values.get(profile.sourceOrderId);
+        if (value) periodAllocations[key] = value;
+      });
+    }
     const { expenses, expenseLines, totalExpense } = calculateContainerExpenses({
       ...expenseFacts,
       operationMode: profile.operationMode,
@@ -78,7 +100,8 @@ export async function GET(request: Request) {
       unloadMonthlyAllocationContainerCount: unloadMonthlyAllocation?.containerCount || 0,
       unloadMonthlyAllocationPosition: unloadMonthlyAllocation?.position || 0,
       directMonthlyAllocationContainerCount: directMonthlyAllocation?.containerCount || 0,
-      directMonthlyAllocationPosition: directMonthlyAllocation?.position || 0
+      directMonthlyAllocationPosition: directMonthlyAllocation?.position || 0,
+      periodAllocations
     }, transportRules, warehousePickupRules, expenseStandards);
 
     return NextResponse.json({

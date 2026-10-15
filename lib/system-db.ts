@@ -416,6 +416,7 @@ async function ensureSystemSchemaOnce() {
           ('AMAZON_MIT2', '送亚马逊仓库 MIT2', 'amazon_warehouse', 'MIT2', 'E类', '5408 Express Avenue, Shafter, CA 93263, USA', 880, 'amazon_delivery'),
           ('AMAZON_GEG2', '送亚马逊仓库 GEG2', 'amazon_warehouse', 'GEG2', 'F类', null, 3500, 'amazon_delivery'),
           ('AMAZON_BFI3', '送亚马逊仓库 BFI3', 'amazon_warehouse', 'BFI3', 'F类', null, 3000, 'amazon_delivery'),
+          ('AMAZON_IWA6', '送亚马逊仓库 IWA6', 'amazon_warehouse', 'IWA6', 'F类', null, 3000, 'amazon_delivery'),
           ('AMAZON_PSC2', '送亚马逊仓库 PSC2', 'amazon_warehouse', 'PSC2', 'F类', null, 3000, 'amazon_delivery'),
           ('AMAZON_OLM1', '送亚马逊仓库 OLM1', 'amazon_warehouse', 'OLM1', 'F类', null, 2960, 'amazon_delivery'),
           ('AMAZON_PDX7', '送亚马逊仓库 PDX7', 'amazon_warehouse', 'PDX7', 'F类', null, 2480, 'amazon_delivery')

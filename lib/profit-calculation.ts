@@ -29,6 +29,7 @@ type ProfitFacts = SourceContainerExpenseFacts & {
   unloadMonthlyAllocationPosition?: number;
   directMonthlyAllocationContainerCount?: number;
   directMonthlyAllocationPosition?: number;
+  periodAllocations?: Record<string, { containerCount: number; position: number }>;
 };
 
 const expenseCategories: Array<{ key: ExpenseCategoryKey; label: string }> = [
@@ -127,20 +128,28 @@ export function calculateContainerExpenses(
     const allocationDate = standard.operation_mode === "direct_delivery" ? facts.pickupDate : facts.unloadDate;
     const unloadMonth = allocationDate?.slice(0, 7) || null;
     const standardMonth = standard.billing_month?.slice(0, 7) || null;
-    if (standardMonth && standardMonth !== unloadMonth) continue;
-    const containerCount = Math.max(
-      standard.operation_mode === "direct_delivery"
-        ? facts.directMonthlyAllocationContainerCount ?? facts.monthlyAllocationContainerCount
-        : facts.unloadMonthlyAllocationContainerCount ?? facts.monthlyAllocationContainerCount,
-      0
-    );
-    if (!unloadMonth || containerCount === 0) {
+    const hasPeriod = Boolean(standard.period_start && standard.period_end);
+    if (hasPeriod && (!allocationDate
+      || allocationDate < standard.period_start!
+      || allocationDate > standard.period_end!)) continue;
+    if (!hasPeriod && standardMonth && standardMonth !== unloadMonth) continue;
+    const periodKey = hasPeriod
+      ? `${standard.operation_mode || "all"}:${standard.period_start}:${standard.period_end}`
+      : null;
+    const periodAllocation = periodKey ? facts.periodAllocations?.[periodKey] : null;
+    const containerCount = Math.max(hasPeriod
+      ? periodAllocation?.containerCount || 0
+      : standard.operation_mode === "direct_delivery"
+      ? facts.directMonthlyAllocationContainerCount ?? facts.monthlyAllocationContainerCount
+      : facts.unloadMonthlyAllocationContainerCount ?? facts.monthlyAllocationContainerCount,
+    0);
+    if (!allocationDate || containerCount === 0) {
       expenseLines.push({
         key: `expense-standard-${standard.id}-unmatched`,
         category: standard.category,
         standardName: `${standard.standard_name}未分摊`,
-        condition: unloadMonth
-          ? `${unloadMonth} 暂无可用于均摊的${standard.operation_mode === "direct_delivery" ? "直送" : "拆柜"}柜数`
+        condition: allocationDate
+          ? `${hasPeriod ? `${standard.period_start} 至 ${standard.period_end}` : unloadMonth} 暂无可用于均摊的${standard.operation_mode === "direct_delivery" ? "直送" : "拆柜"}柜数`
           : `源系统缺少${standard.operation_mode === "direct_delivery" ? "提柜" : "拆柜"}日期，无法归属费用月份`,
         warehousePoint: null,
         quantity: 0,
@@ -153,23 +162,23 @@ export function calculateContainerExpenses(
     const totalCents = Math.round(standard.amount * 100);
     const baseCents = Math.floor(totalCents / containerCount);
     const remainderCents = totalCents - baseCents * containerCount;
-    const position = Math.max(
-      standard.operation_mode === "direct_delivery"
+    const position = Math.max(hasPeriod
+      ? periodAllocation?.position || 1
+      : standard.operation_mode === "direct_delivery"
         ? facts.directMonthlyAllocationPosition ?? facts.monthlyAllocationPosition
         : facts.unloadMonthlyAllocationPosition ?? facts.monthlyAllocationPosition,
-      1
-    );
+    1);
     const allocatedAmount = (baseCents + (position <= remainderCents ? 1 : 0)) / 100;
     const periodLabel = standard.period_start && standard.period_end
       ? `${standard.period_start.slice(5).replace("-", "/")}-${standard.period_end.slice(5).replace("-", "/")}`
       : null;
     expenseLines.push({
-      key: `expense-standard-${standard.id}-${unloadMonth}`,
+      key: `expense-standard-${standard.id}-${hasPeriod ? standard.period_start : unloadMonth}`,
       category: standard.category,
       standardName: periodLabel
         ? `${standard.standard_name}均摊（${periodLabel}）`
         : `${unloadMonth} ${standard.standard_name}均摊`,
-      condition: `${unloadMonth} ${standard.standard_name} $${standard.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ÷ 当月 ${containerCount} 个${standard.operation_mode === "direct_delivery" ? "直送" : "拆柜"}`,
+      condition: `${hasPeriod ? `${standard.period_start} 至 ${standard.period_end}` : unloadMonth} ${standard.standard_name} $${standard.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ÷ ${hasPeriod ? "周期内" : "当月"} ${containerCount} 个${standard.operation_mode === "direct_delivery" ? "直送" : "拆柜"}`,
       warehousePoint: null,
       quantity: 1,
       unitAmount: allocatedAmount,

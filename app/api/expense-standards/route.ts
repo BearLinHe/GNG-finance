@@ -52,7 +52,6 @@ export async function POST(request: Request) {
     const isProratedMonthly = standardKind === "monthly" && (category === "warehouse" || category === "transport");
     if (isProratedMonthly) {
       if (!periodStart || !periodEnd) throw new Error("请选择费用周期的开始和结束日期");
-      if (periodStart.slice(0, 7) !== periodEnd.slice(0, 7)) throw new Error("费用周期必须在同一个月份内");
       if (periodStart > periodEnd) throw new Error("结束日期不能早于开始日期");
     } else if (standardKind === "monthly" && !body.billingMonth) {
       throw new Error("请选择费用月份");

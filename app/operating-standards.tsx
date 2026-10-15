@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import {
   CalendarDays,
@@ -103,6 +103,12 @@ const conditionLabels: Record<string, string> = {
   amazon_delivery: "按目的仓点计费"
 };
 
+const monthlyProjectDefaults: Record<StandardCategory, string[]> = {
+  transport: ["车架租金", "Shipper 场地租金"],
+  warehouse: ["仓库工资", "仓库耗材"],
+  domestic: []
+};
+
 const currentMonth = () => new Date().toISOString().slice(0, 7);
 const currentMonthEnd = () => {
   const now = new Date();
@@ -149,6 +155,15 @@ export default function OperatingStandards({ category }: { category: StandardCat
   const [editorOpen, setEditorOpen] = useState(false);
   const [form, setForm] = useState<StandardForm>(() => emptyForm("fixed"));
   const loadSequence = useRef(0);
+  const projectInputId = useId();
+  const projectOptionsId = `${projectInputId}-options`;
+  const monthlyProjectOptions = useMemo(() => [...new Set([
+    ...monthlyProjectDefaults[category],
+    ...customStandards
+      .filter((standard) => standard.category === category && standard.standard_kind === "monthly")
+      .map((standard) => standard.standard_name.trim())
+      .filter(Boolean)
+  ])], [category, customStandards]);
 
   const loadStandards = useCallback(async (force = false) => {
     const requestId = ++loadSequence.current;
@@ -239,7 +254,9 @@ export default function OperatingStandards({ category }: { category: StandardCat
       periodEnd: standard.period_end,
       vendorName: standard.vendor_name,
       applicationLabel: standard.application_rule === "monthly_prorated"
-        ? standard.operation_mode === "direct_delivery" ? "按提柜月份平均分摊" : "按拆柜月份平均分摊"
+        ? standard.operation_mode === "direct_delivery"
+          ? standard.period_start ? "按提柜日期周期平均分摊" : "按提柜月份平均分摊"
+          : standard.period_start ? "按拆柜日期周期平均分摊" : "按拆柜月份平均分摊"
         : standard.standard_kind === "fixed"
         ? standard.operation_mode === "unload"
           ? "拆柜每柜固定计入"
@@ -266,12 +283,14 @@ export default function OperatingStandards({ category }: { category: StandardCat
     const nextForm = emptyForm(standardKind);
     if (category === "warehouse" && standardKind === "monthly") nextForm.standardName = "仓库工资";
     if (category === "transport" && standardKind === "monthly") nextForm.standardName = "车架租金";
+    setError("");
     setForm(nextForm);
     setEditorOpen(true);
   }
 
   function openEdit(row: StandardRow) {
     if (!row.editable || row.id == null) return;
+    setError("");
     setForm({
       id: row.id,
       standardName: row.standardName,
@@ -390,7 +409,7 @@ export default function OperatingStandards({ category }: { category: StandardCat
             <CircleDollarSign size={17} /><span><strong>固定标准</strong><small>按柜自动计入</small></span>
           </button>
           <button className={standardKind === "monthly" ? "active" : ""} onClick={() => setStandardKind("monthly")}>
-            <CalendarDays size={17} /><span><strong>月度费用</strong><small>登记与按月均摊</small></span>
+            <CalendarDays size={17} /><span><strong>月度费用</strong><small>登记与按周期均摊</small></span>
           </button>
         </div>
         <button className="button primary" onClick={openCreate}><Plus size={16} />新增{standardKind === "fixed" ? "固定标准" : "月度费用"}</button>
@@ -404,7 +423,7 @@ export default function OperatingStandards({ category }: { category: StandardCat
         <button className="button ghost" onClick={() => setSearch("")} disabled={!search}><XCircle size={16} />清空</button>
       </div>
 
-      {error ? <div className="error">{error}</div> : null}
+      {error && !editorOpen ? <div className="error" role="alert">{error}</div> : null}
 
       <section className="panel standards-panel">
         <div className="panel-head">
@@ -433,6 +452,7 @@ export default function OperatingStandards({ category }: { category: StandardCat
               <button className="icon-button" title="关闭" onClick={() => setEditorOpen(false)} disabled={saving}><X size={17} /></button>
             </div>
             <form className="standard-editor-form" onSubmit={saveForm}>
+              {error ? <div className="error" role="alert">{error}</div> : null}
               {standardKind === "monthly" && (category === "warehouse" || category === "transport") ? (
                 <div className="standard-form-grid">
                   <div className="field"><label>开始日期</label><input type="date" required value={form.periodStart} onChange={(event) => setForm({ ...form, periodStart: event.target.value, billingMonth: event.target.value.slice(0, 7) })} /></div>
@@ -441,19 +461,22 @@ export default function OperatingStandards({ category }: { category: StandardCat
               ) : standardKind === "monthly" ? (
                 <div className="field"><label>费用月份</label><input type="month" required value={form.billingMonth} onChange={(event) => setForm({ ...form, billingMonth: event.target.value })} /></div>
               ) : null}
-              <div className="field"><label>费用项目</label>{standardKind === "monthly" && category === "transport" ? (
-                <select required value={form.standardName} onChange={(event) => setForm({ ...form, standardName: event.target.value })}>
-                  <option value="车架租金">车架租金</option>
-                  <option value="Shipper 场地租金">Shipper 场地租金</option>
-                </select>
-              ) : standardKind === "monthly" && category === "warehouse" ? (
-                <select required value={form.standardName} onChange={(event) => setForm({ ...form, standardName: event.target.value })}>
-                  <option value="仓库工资">仓库工资</option>
-                  <option value="仓库耗材">仓库耗材</option>
-                </select>
-              ) : (
-                <input required value={form.standardName} onChange={(event) => setForm({ ...form, standardName: event.target.value })} placeholder={standardKind === "monthly" ? "例如：仓库工资" : "例如：固定操作费"} />
-              )}</div>
+              <div className="field">
+                <label htmlFor={projectInputId}>费用项目</label>
+                <input
+                  id={projectInputId}
+                  required
+                  list={standardKind === "monthly" ? projectOptionsId : undefined}
+                  value={form.standardName}
+                  onChange={(event) => setForm({ ...form, standardName: event.target.value })}
+                  placeholder={standardKind === "monthly" ? "选择或输入费用项目" : "例如：固定操作费"}
+                />
+                {standardKind === "monthly" ? (
+                  <datalist id={projectOptionsId}>
+                    {monthlyProjectOptions.map((name) => <option key={name} value={name} />)}
+                  </datalist>
+                ) : null}
+              </div>
               {standardKind === "monthly" && (category === "warehouse" || category === "transport") ? (
                 <div className="field"><label>月度金额</label><input type="number" min="0" step="0.01" required value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} /></div>
               ) : (

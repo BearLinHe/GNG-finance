@@ -3,6 +3,7 @@ import { calculateContainerExpenses } from "@/lib/profit-calculation";
 import {
   getSourceContainerExpenseFacts,
   getSourceOperationMonthAllocations,
+  getSourceOperationPeriodAllocations,
   searchSourceContainerProfitRows
 } from "@/lib/source-db";
 import {
@@ -83,9 +84,23 @@ export async function GET(request: Request) {
       .filter((row) => row.operationMode === "direct_delivery")
       .map((row) => row.pickupDate?.slice(0, 7) || "")
       .filter(Boolean);
-    const [unloadMonthAllocations, directMonthAllocations] = await Promise.all([
+    const expensePeriods = expenseStandards
+      .filter((standard) => standard.standard_kind === "monthly"
+        && standard.application_rule === "monthly_prorated"
+        && standard.period_start
+        && standard.period_end
+        && standard.operation_mode)
+      .map((standard) => ({
+        operationMode: standard.operation_mode!,
+        key: `${standard.operation_mode}:${standard.period_start}:${standard.period_end}`,
+        startDate: standard.period_start!,
+        endDate: standard.period_end!
+      }));
+    const [unloadMonthAllocations, directMonthAllocations, unloadPeriodAllocations, directPeriodAllocations] = await Promise.all([
       getSourceOperationMonthAllocations("unload", unloadMonths, forceRefresh),
-      getSourceOperationMonthAllocations("direct_delivery", directMonths, forceRefresh)
+      getSourceOperationMonthAllocations("direct_delivery", directMonths, forceRefresh),
+      getSourceOperationPeriodAllocations("unload", expensePeriods.filter((period) => period.operationMode === "unload"), forceRefresh),
+      getSourceOperationPeriodAllocations("direct_delivery", expensePeriods.filter((period) => period.operationMode === "direct_delivery"), forceRefresh)
     ]);
 
     const rows = sourceRows.map((row) => {
@@ -104,6 +119,13 @@ export async function GET(request: Request) {
         : unloadMonthAllocations.get(row.sourceOrderId);
       const unloadMonthlyAllocation = unloadMonthAllocations.get(row.sourceOrderId);
       const directMonthlyAllocation = directMonthAllocations.get(row.sourceOrderId);
+      const periodAllocations: Record<string, { containerCount: number; position: number }> = {};
+      for (const allocations of [unloadPeriodAllocations, directPeriodAllocations]) {
+        allocations.forEach((values, key) => {
+          const value = values.get(row.sourceOrderId);
+          if (value) periodAllocations[key] = value;
+        });
+      }
       const expense = calculateContainerExpenses({
         ...facts,
         operationMode: row.operationMode,
@@ -114,7 +136,8 @@ export async function GET(request: Request) {
         unloadMonthlyAllocationContainerCount: unloadMonthlyAllocation?.containerCount || 0,
         unloadMonthlyAllocationPosition: unloadMonthlyAllocation?.position || 0,
         directMonthlyAllocationContainerCount: directMonthlyAllocation?.containerCount || 0,
-        directMonthlyAllocationPosition: directMonthlyAllocation?.position || 0
+        directMonthlyAllocationPosition: directMonthlyAllocation?.position || 0,
+        periodAllocations
       }, transportRules, warehousePickupRules, expenseStandards);
       const incomeAmount = Number(row.sourceInvoiceTotalAmount || 0);
 

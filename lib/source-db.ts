@@ -183,15 +183,20 @@ export type SourceOperationMode = {
 
 const SOURCE_FACT_CACHE_TTL_MS = 5 * 60 * 1000;
 type SourceMonthAllocation = { month: string; containerCount: number; position: number };
+export type SourcePeriodAllocation = { containerCount: number; position: number };
+export type SourceExpensePeriod = { key: string; startDate: string; endDate: string };
 const sourceGlobal = globalThis as typeof globalThis & {
   gngSourcePool?: Pool;
   gngSourceExpenseFactCache?: Map<number, { expiresAt: number; value: SourceContainerExpenseFacts }>;
   gngSourceMonthAllocationCache?: Map<string, { expiresAt: number; value: Map<number, SourceMonthAllocation> }>;
+  gngSourcePeriodAllocationCache?: Map<string, { expiresAt: number; value: Map<number, SourcePeriodAllocation> }>;
 };
 const sourceExpenseFactCache: Map<number, { expiresAt: number; value: SourceContainerExpenseFacts }> =
   sourceGlobal.gngSourceExpenseFactCache ?? (sourceGlobal.gngSourceExpenseFactCache = new Map());
 const sourceMonthAllocationCache: Map<string, { expiresAt: number; value: Map<number, SourceMonthAllocation> }> =
   sourceGlobal.gngSourceMonthAllocationCache ?? (sourceGlobal.gngSourceMonthAllocationCache = new Map());
+const sourcePeriodAllocationCache: Map<string, { expiresAt: number; value: Map<number, SourcePeriodAllocation> }> =
+  sourceGlobal.gngSourcePeriodAllocationCache ?? (sourceGlobal.gngSourcePeriodAllocationCache = new Map());
 
 function getPool() {
   if (!sourceGlobal.gngSourcePool) {
@@ -1059,6 +1064,91 @@ export async function getSourceOperationMonthAllocations(
     });
   }
   fresh.forEach((value, orderId) => combined.set(orderId, value));
+  return combined;
+}
+
+export async function getSourceOperationPeriodAllocations(
+  operationMode: "unload" | "direct_delivery",
+  periods: SourceExpensePeriod[],
+  bypassCache = false
+) {
+  const normalizedPeriods = [...new Map(
+    periods
+      .filter((period) => /^\d{4}-\d{2}-\d{2}$/.test(period.startDate)
+        && /^\d{4}-\d{2}-\d{2}$/.test(period.endDate)
+        && period.startDate <= period.endDate)
+      .map((period) => [period.key, period])
+  ).values()];
+  const combined = new Map<string, Map<number, SourcePeriodAllocation>>();
+  if (!normalizedPeriods.length) return combined;
+
+  const now = Date.now();
+  const missingPeriods = normalizedPeriods.filter((period) => {
+    const cached = sourcePeriodAllocationCache.get(`${operationMode}:${period.key}`);
+    if (!bypassCache && cached && cached.expiresAt > now) {
+      combined.set(period.key, cached.value);
+      return false;
+    }
+    return true;
+  });
+  if (!missingPeriods.length) return combined;
+
+  const result = await withReadonlySource(async (client) => client.query(
+    `
+      with periods as (
+        select *
+        from jsonb_to_recordset($2::jsonb) as p(key text, start_date date, end_date date)
+      ),
+      operation_dates as (
+        select
+          o.order_id,
+          case
+            when $1::text = 'unload' then min(ir.planned_unload_at)::date
+            else o.pickup_date::date
+          end as allocation_date
+        from public.orders o
+        left join wms.inbound_receipt ir on ir.order_id = o.order_id
+        where (
+            ($1::text = 'unload' and (o.operation_mode = 'unload' or ir.inbound_source = 'direct_rejection_unload'))
+            or ($1::text = 'direct_delivery' and o.operation_mode = 'direct_delivery')
+          )
+          and lower(trim(coalesce(o.status, ''))) not in ('archived', 'cancelled', 'canceled')
+          and exists (select 1 from public.order_detail od where od.order_id = o.order_id)
+        group by o.order_id, o.pickup_date
+      ),
+      matched as (
+        select p.key, d.order_id
+        from periods p
+        join operation_dates d on d.allocation_date between p.start_date and p.end_date
+      )
+      select
+        key,
+        order_id::int,
+        count(*) over (partition by key)::int as container_count,
+        row_number() over (partition by key order by order_id)::int as position
+      from matched
+    `,
+    [operationMode, JSON.stringify(missingPeriods.map((period) => ({
+      key: period.key,
+      start_date: period.startDate,
+      end_date: period.endDate
+    })))]
+  ));
+
+  for (const period of missingPeriods) {
+    const values = new Map<number, SourcePeriodAllocation>();
+    result.rows
+      .filter((row) => String(row.key) === period.key)
+      .forEach((row) => values.set(Number(row.order_id), {
+        containerCount: Number(row.container_count),
+        position: Number(row.position)
+      }));
+    sourcePeriodAllocationCache.set(`${operationMode}:${period.key}`, {
+      expiresAt: now + SOURCE_FACT_CACHE_TTL_MS,
+      value: values
+    });
+    combined.set(period.key, values);
+  }
   return combined;
 }
 
