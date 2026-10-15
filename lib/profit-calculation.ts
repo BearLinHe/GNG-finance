@@ -1,4 +1,4 @@
-import type { SourceContainerExpenseFacts } from "@/lib/source-db";
+import type { SourceAllocationScope, SourceContainerExpenseFacts } from "@/lib/source-db";
 import type {
   ExpenseStandard,
   TransportPricingRule,
@@ -29,6 +29,8 @@ type ProfitFacts = SourceContainerExpenseFacts & {
   unloadMonthlyAllocationPosition?: number;
   directMonthlyAllocationContainerCount?: number;
   directMonthlyAllocationPosition?: number;
+  pickupMonthlyAllocationContainerCount?: number;
+  pickupMonthlyAllocationPosition?: number;
   periodAllocations?: Record<string, { containerCount: number; position: number }>;
 };
 
@@ -40,6 +42,13 @@ const expenseCategories: Array<{ key: ExpenseCategoryKey; label: string }> = [
 
 function normalizedPoint(value: string | null | undefined) {
   return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export function getMonthlyExpenseAllocationScope(
+  standard: Pick<ExpenseStandard, "category" | "operation_mode">
+): SourceAllocationScope {
+  if (standard.category === "transport") return "pickup";
+  return standard.operation_mode === "direct_delivery" ? "direct_delivery" : "unload";
 }
 
 export function calculateContainerExpenses(
@@ -123,9 +132,13 @@ export function calculateContainerExpenses(
 
   for (const standard of fixedStandards) {
     if (standard.standard_kind !== "monthly" || standard.application_rule !== "monthly_prorated") continue;
-    if (standard.operation_mode && standard.operation_mode !== facts.operationMode
+    const allocationScope = getMonthlyExpenseAllocationScope(standard);
+    if (allocationScope === "pickup" && !isUnload && !isDirect) continue;
+    if (allocationScope !== "pickup" && standard.operation_mode && standard.operation_mode !== facts.operationMode
       && !(isDirectRejectionUnload && standard.operation_mode === "unload")) continue;
-    const allocationDate = standard.operation_mode === "direct_delivery" ? facts.pickupDate : facts.unloadDate;
+    const allocationDate = (allocationScope === "unload" ? facts.unloadDate : facts.pickupDate)?.slice(0, 10) || null;
+    const dateLabel = allocationScope === "unload" ? "拆柜" : "提柜";
+    const containerLabel = allocationScope === "pickup" ? "拆柜及直送柜" : allocationScope === "unload" ? "拆柜" : "直送柜";
     const unloadMonth = allocationDate?.slice(0, 7) || null;
     const standardMonth = standard.billing_month?.slice(0, 7) || null;
     const hasPeriod = Boolean(standard.period_start && standard.period_end);
@@ -134,12 +147,14 @@ export function calculateContainerExpenses(
       || allocationDate > standard.period_end!)) continue;
     if (!hasPeriod && standardMonth && standardMonth !== unloadMonth) continue;
     const periodKey = hasPeriod
-      ? `${standard.operation_mode || "all"}:${standard.period_start}:${standard.period_end}`
+      ? `${allocationScope}:${standard.period_start}:${standard.period_end}`
       : null;
     const periodAllocation = periodKey ? facts.periodAllocations?.[periodKey] : null;
     const containerCount = Math.max(hasPeriod
       ? periodAllocation?.containerCount || 0
-      : standard.operation_mode === "direct_delivery"
+      : allocationScope === "pickup"
+      ? facts.pickupMonthlyAllocationContainerCount || 0
+      : allocationScope === "direct_delivery"
       ? facts.directMonthlyAllocationContainerCount ?? facts.monthlyAllocationContainerCount
       : facts.unloadMonthlyAllocationContainerCount ?? facts.monthlyAllocationContainerCount,
     0);
@@ -149,8 +164,8 @@ export function calculateContainerExpenses(
         category: standard.category,
         standardName: `${standard.standard_name}未分摊`,
         condition: allocationDate
-          ? `${hasPeriod ? `${standard.period_start} 至 ${standard.period_end}` : unloadMonth} 暂无可用于均摊的${standard.operation_mode === "direct_delivery" ? "直送" : "拆柜"}柜数`
-          : `源系统缺少${standard.operation_mode === "direct_delivery" ? "提柜" : "拆柜"}日期，无法归属费用月份`,
+          ? `${hasPeriod ? `${standard.period_start} 至 ${standard.period_end}` : unloadMonth} 暂无可用于均摊的${containerLabel}数`
+          : `源系统缺少${dateLabel}日期，无法归属费用月份`,
         warehousePoint: null,
         quantity: 0,
         unitAmount: standard.amount,
@@ -164,7 +179,9 @@ export function calculateContainerExpenses(
     const remainderCents = totalCents - baseCents * containerCount;
     const position = Math.max(hasPeriod
       ? periodAllocation?.position || 1
-      : standard.operation_mode === "direct_delivery"
+      : allocationScope === "pickup"
+      ? facts.pickupMonthlyAllocationPosition || 1
+      : allocationScope === "direct_delivery"
         ? facts.directMonthlyAllocationPosition ?? facts.monthlyAllocationPosition
         : facts.unloadMonthlyAllocationPosition ?? facts.monthlyAllocationPosition,
     1);
@@ -178,7 +195,7 @@ export function calculateContainerExpenses(
       standardName: periodLabel
         ? `${standard.standard_name}均摊（${periodLabel}）`
         : `${unloadMonth} ${standard.standard_name}均摊`,
-      condition: `${hasPeriod ? `${standard.period_start} 至 ${standard.period_end}` : unloadMonth} ${standard.standard_name} $${standard.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ÷ ${hasPeriod ? "周期内" : "当月"} ${containerCount} 个${standard.operation_mode === "direct_delivery" ? "直送" : "拆柜"}`,
+      condition: `${hasPeriod ? `${standard.period_start} 至 ${standard.period_end}` : unloadMonth} ${standard.standard_name} $${standard.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ÷ ${dateLabel}日期在${hasPeriod ? "周期内" : "当月"}的 ${containerCount} 个${containerLabel}`,
       warehousePoint: null,
       quantity: 1,
       unitAmount: allocatedAmount,

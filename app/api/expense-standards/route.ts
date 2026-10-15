@@ -69,7 +69,7 @@ export async function POST(request: Request) {
       periodStart: periodStart || null,
       periodEnd: periodEnd || null,
       applicationRule: isProratedMonthly ? "monthly_prorated" : undefined,
-      operationMode: isProratedMonthly ? category === "transport" ? "direct_delivery" : "unload" : undefined,
+      operationMode: isProratedMonthly ? category === "transport" ? null : "unload" : undefined,
       vendorName: body.vendorName,
       description: body.description
     });

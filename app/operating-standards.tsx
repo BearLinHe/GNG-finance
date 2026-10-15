@@ -254,7 +254,9 @@ export default function OperatingStandards({ category }: { category: StandardCat
       periodEnd: standard.period_end,
       vendorName: standard.vendor_name,
       applicationLabel: standard.application_rule === "monthly_prorated"
-        ? standard.operation_mode === "direct_delivery"
+        ? standard.category === "transport"
+          ? standard.period_start ? "拆柜、直送按提柜周期分摊" : "拆柜、直送按提柜月份分摊"
+          : standard.operation_mode === "direct_delivery"
           ? standard.period_start ? "按提柜日期周期平均分摊" : "按提柜月份平均分摊"
           : standard.period_start ? "按拆柜日期周期平均分摊" : "按拆柜月份平均分摊"
         : standard.standard_kind === "fixed"

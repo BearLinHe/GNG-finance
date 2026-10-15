@@ -1328,7 +1328,9 @@ function normalizeExpenseStandard(row: Record<string, unknown>): ExpenseStandard
       : row.application_rule === "monthly_manual"
       ? "monthly_manual"
       : "per_container",
-    operation_mode: row.operation_mode === "unload" || row.operation_mode === "direct_delivery"
+    operation_mode: row.category === "transport" && row.standard_kind === "monthly" && row.application_rule === "monthly_prorated"
+      ? null
+      : row.operation_mode === "unload" || row.operation_mode === "direct_delivery"
       ? row.operation_mode
       : null,
     description: row.description ? String(row.description) : null,
@@ -1399,7 +1401,12 @@ export async function saveExpenseStandard(params: {
           set category = $1, standard_kind = $2, standard_name = $3, amount = $4,
               unit = $5, billing_month = $6::date, vendor_name = $7,
               application_rule = $8, description = $9, period_start = $10::date,
-              period_end = $11::date, operation_mode = coalesce($12, operation_mode), updated_at = now()
+              period_end = $11::date,
+              operation_mode = case
+                when $1 = 'transport' and $2 = 'monthly' and $8 = 'monthly_prorated' then null
+                else coalesce($12, operation_mode)
+              end,
+              updated_at = now()
           where id = $13 and is_active = true
           returning *
         `,

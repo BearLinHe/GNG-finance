@@ -183,6 +183,7 @@ export type SourceOperationMode = {
 
 const SOURCE_FACT_CACHE_TTL_MS = 5 * 60 * 1000;
 type SourceMonthAllocation = { month: string; containerCount: number; position: number };
+export type SourceAllocationScope = "unload" | "direct_delivery" | "pickup";
 export type SourcePeriodAllocation = { containerCount: number; position: number };
 export type SourceExpensePeriod = { key: string; startDate: string; endDate: string };
 const sourceGlobal = globalThis as typeof globalThis & {
@@ -983,7 +984,7 @@ export async function searchSourceContainerProfitRows(params: {
 }
 
 export async function getSourceOperationMonthAllocations(
-  operationMode: "unload" | "direct_delivery",
+  operationMode: SourceAllocationScope,
   months: string[],
   bypassCache = false
 ) {
@@ -1020,11 +1021,12 @@ export async function getSourceOperationMonthAllocations(
                 or ir.inbound_source = 'direct_rejection_unload'
               ))
               or ($1::text = 'direct_delivery' and o.operation_mode = 'direct_delivery')
+              or ($1::text = 'pickup' and o.operation_mode in ('unload', 'direct_delivery'))
             )
             and lower(trim(coalesce(o.status, ''))) not in ('archived', 'cancelled', 'canceled')
             and (
               ($1::text = 'unload' and ir.planned_unload_at is not null)
-              or ($1::text = 'direct_delivery' and o.pickup_date is not null)
+              or ($1::text in ('direct_delivery', 'pickup') and o.pickup_date is not null)
             )
             and exists (
               select 1 from public.order_detail od_exists where od_exists.order_id = o.order_id
@@ -1068,7 +1070,7 @@ export async function getSourceOperationMonthAllocations(
 }
 
 export async function getSourceOperationPeriodAllocations(
-  operationMode: "unload" | "direct_delivery",
+  operationMode: SourceAllocationScope,
   periods: SourceExpensePeriod[],
   bypassCache = false
 ) {
@@ -1111,6 +1113,7 @@ export async function getSourceOperationPeriodAllocations(
         where (
             ($1::text = 'unload' and (o.operation_mode = 'unload' or ir.inbound_source = 'direct_rejection_unload'))
             or ($1::text = 'direct_delivery' and o.operation_mode = 'direct_delivery')
+            or ($1::text = 'pickup' and o.operation_mode in ('unload', 'direct_delivery'))
           )
           and lower(trim(coalesce(o.status, ''))) not in ('archived', 'cancelled', 'canceled')
           and exists (select 1 from public.order_detail od where od.order_id = o.order_id)
