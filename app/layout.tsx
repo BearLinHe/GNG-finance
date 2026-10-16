@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GNG 财务系统",
-  description: "海柜初始账单、单柜盈亏和支出标准"
+  title: "GNG价格核算",
+  description: "对外单柜核算与 OAK 运输部核算"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

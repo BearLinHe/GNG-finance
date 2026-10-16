@@ -13,6 +13,7 @@ import {
   ChevronsLeft,
   ChevronsRight,
   CircleDollarSign,
+  Calculator,
   ClipboardList,
   Database,
   Layers3,
@@ -22,13 +23,16 @@ import {
   Save,
   Search,
   Trash2,
+  Truck,
   X,
   XCircle
 } from "lucide-react";
 import { money } from "@/lib/money";
 import OperatingStandards, { type StandardCategory } from "./operating-standards";
+import OakTransportAccounting from "./oak-transport-accounting";
 
 type TabKey = "initial" | "container" | "fees";
+type AccountingModule = "external" | "oak-transport";
 type FeeOrigin = "source" | "legacy" | "system";
 type InitialBillKind = "unload" | "direct_delivery";
 type InitialDateField = "orderDate" | "etaDate" | "pickupDate" | "unloadDate" | "returnDeadline";
@@ -628,6 +632,8 @@ function DataTable<T>({
 }
 
 export default function Home() {
+  const [activeModule, setActiveModule] = useState<AccountingModule>("external");
+  const [externalNavExpanded, setExternalNavExpanded] = useState(true);
   const [tab, setTab] = useState<TabKey>("initial");
   const [search, setSearch] = useState("");
   const [containerSearch, setContainerSearch] = useState("");
@@ -820,6 +826,7 @@ export default function Home() {
   }
 
   async function loadCurrentTab(force = false) {
+    if (activeModule !== "external") return;
     if (tab === "initial") return loadInitialBills(initialPage, initialPageSize, force);
     if (tab === "container") return loadContainerProfits(containerPage, containerPageSize, force);
     return loadFees();
@@ -921,13 +928,14 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (tab !== "container") return;
+    if (activeModule !== "external" || tab !== "container") return;
     const timeout = window.setTimeout(() => {
       void loadContainerProfits(containerPage, containerPageSize);
     }, 300);
     return () => window.clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    activeModule,
     tab,
     containerSearch,
     containerCustomerFilter,
@@ -940,7 +948,7 @@ export default function Home() {
   ]);
 
   useEffect(() => {
-    if (tab !== "initial") {
+    if (activeModule !== "external" || tab !== "initial") {
       return;
     }
     const timeout = window.setTimeout(() => {
@@ -949,6 +957,7 @@ export default function Home() {
     return () => window.clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    activeModule,
     tab,
     initialPage,
     initialPageSize,
@@ -1025,7 +1034,9 @@ export default function Home() {
   }, [containerProfitSummary]);
 
   const pageTitle =
-    tab === "initial"
+    activeModule === "oak-transport"
+      ? "OAK 运输部核算"
+      : tab === "initial"
       ? "源库账单"
       : tab === "container"
       ? `${operationModeLabels[containerKind]}单柜盈亏`
@@ -1033,7 +1044,9 @@ export default function Home() {
       ? `${expenseCategoryLabels[standardCategory]}标准`
       : "支出标准";
   const pageSubtitle =
-    tab === "initial"
+    activeModule === "oak-transport"
+      ? ""
+      : tab === "initial"
       ? "按柜号汇总源系统全部有效账单，包含拆柜、直送、仓储及负数账单"
       : tab === "container"
       ? `${operationModeLabels[containerKind]}柜收入汇总全部有效账单，支出按适用条件自动匹配标准`
@@ -1319,8 +1332,8 @@ export default function Home() {
         <div className="sidebar-brand">
           <div className="brand-mark">G</div>
           <div className="brand-copy">
-            <strong>GNG 财务系统</strong>
-            <span>Finance Control</span>
+            <strong>GNG价格核算</strong>
+            <span>Cost Accounting</span>
           </div>
           <button
             className="sidebar-toggle"
@@ -1332,9 +1345,27 @@ export default function Home() {
             {sidebarCollapsed ? <ChevronsRight size={17} /> : <ChevronsLeft size={17} />}
           </button>
         </div>
-        <nav className="side-nav">
+        <nav className="side-nav" aria-label="核算模块">
           <div className="nav-section">
-            <div className="nav-section-label">财务工作台</div>
+            <div className="nav-section-label">核算工作台</div>
+            <button
+              type="button"
+              className={`nav-item nav-module ${activeModule === "external" ? "active" : ""}`}
+              onClick={() => {
+                setExternalNavExpanded((expanded) => activeModule !== "external" || sidebarCollapsed || !expanded);
+                setActiveModule("external");
+                if (sidebarCollapsed) setSidebarCollapsed(false);
+              }}
+              title="对外单柜核算"
+              aria-label="对外单柜核算"
+              aria-expanded={externalNavExpanded && !sidebarCollapsed}
+              aria-controls="external-accounting-nav"
+            >
+              <span className="nav-icon"><Calculator size={18} /></span>
+              <span className="nav-label">对外单柜核算</span>
+              <span className="nav-parent-caret">{externalNavExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
+            </button>
+            {externalNavExpanded ? <div className="nav-module-content" id="external-accounting-nav">
             <button
               className={`nav-item nav-parent ${tab === "initial" ? "active" : ""}`}
               onClick={() => {
@@ -1342,12 +1373,14 @@ export default function Home() {
                 setExpandedNav((current) => current === "source" ? null : "source");
               }}
               title="源库账单"
+              aria-expanded={expandedNav === "source"}
+              aria-controls="source-bill-nav"
             >
               <span className="nav-icon"><Database size={18} /></span>
               <span className="nav-label">源库账单</span>
               <span className="nav-parent-caret">{expandedNav === "source" ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
             </button>
-            {expandedNav === "source" ? <div className="nav-submenu">
+            {expandedNav === "source" ? <div className="nav-submenu" id="source-bill-nav">
               {initialBillKinds.map((kind) => (
                 <button
                   key={kind}
@@ -1375,12 +1408,14 @@ export default function Home() {
                 setExpandedNav((current) => current === "standards" ? null : "standards");
               }}
               title="支出标准"
+              aria-expanded={expandedNav === "standards"}
+              aria-controls="expense-standard-nav"
             >
               <span className="nav-icon"><Pencil size={18} /></span>
               <span className="nav-label">支出标准</span>
               <span className="nav-parent-caret">{expandedNav === "standards" ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
             </button>
-            {expandedNav === "standards" ? <div className="nav-submenu standards-submenu">
+            {expandedNav === "standards" ? <div className="nav-submenu standards-submenu" id="expense-standard-nav">
               {(["transport", "warehouse", "domestic"] as StandardCategory[]).map((category) => (
                 <button
                   key={category}
@@ -1403,12 +1438,14 @@ export default function Home() {
                 setExpandedNav((current) => current === "profit" ? null : "profit");
               }}
               title="单柜盈亏"
+              aria-expanded={expandedNav === "profit"}
+              aria-controls="container-profit-nav"
             >
               <span className="nav-icon"><CircleDollarSign size={18} /></span>
               <span className="nav-label">单柜盈亏</span>
               <span className="nav-parent-caret">{expandedNav === "profit" ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
             </button>
-            {expandedNav === "profit" ? <div className="nav-submenu profit-submenu">
+            {expandedNav === "profit" ? <div className="nav-submenu profit-submenu" id="container-profit-nav">
               {initialBillKinds.map((kind) => (
                 <button
                   key={kind}
@@ -1428,15 +1465,35 @@ export default function Home() {
                 </button>
               ))}
             </div> : null}
+            </div> : null}
+            <button
+              type="button"
+              className={`nav-item nav-module ${activeModule === "oak-transport" ? "active" : ""}`}
+              onClick={() => {
+                setActiveModule("oak-transport");
+                setExternalNavExpanded(false);
+                setSelectedInitialRow(null);
+                setSelectedContainerProfit(null);
+              }}
+              title="OAK 运输部核算"
+              aria-label="OAK 运输部核算"
+              aria-current={activeModule === "oak-transport" ? "page" : undefined}
+            >
+              <span className="nav-icon"><Truck size={18} /></span>
+              <span className="nav-label">OAK 运输部核算</span>
+            </button>
           </div>
         </nav>
       </aside>
 
       <div className="content-shell">
         <header className="topbar">
-          <div className="topbar-title">{pageTitle}</div>
+          <div className="topbar-title">
+            {activeModule === "external" ? <><span className="topbar-module">对外单柜核算</span><ChevronRight size={14} aria-hidden="true" /></> : null}
+            <span>{pageTitle}</span>
+          </div>
           <div className="top-actions">
-            {tab !== "fees" ? <button className="button ghost" onClick={() => void loadCurrentTab(true)} disabled={loading}>
+            {activeModule === "external" && tab !== "fees" ? <button className="button ghost" onClick={() => void loadCurrentTab(true)} disabled={loading}>
               <RefreshCw size={16} />
               刷新
             </button> : null}
@@ -1447,10 +1504,11 @@ export default function Home() {
         <div className="page-head">
           <div>
             <h1 className="page-title">{pageTitle}</h1>
-            <p className="page-subtitle">{pageSubtitle}</p>
+            {pageSubtitle ? <p className="page-subtitle">{pageSubtitle}</p> : null}
           </div>
         </div>
 
+        {activeModule === "oak-transport" ? <OakTransportAccounting /> : <>
         {tab === "fees" ? <OperatingStandards category={standardCategory} /> : null}
 
         {tab === "fees" ? null : tab === "initial" ? (
@@ -2081,6 +2139,7 @@ export default function Home() {
             </aside>
           ) : null}
         </div> : null}
+        </>}
         </main>
       </div>
     </div>
