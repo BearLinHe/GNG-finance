@@ -20,7 +20,13 @@ export function resolveDriverLocation(value: string): DriverLocation {
     latitude: 37.890044065417, longitude: -121.24780995545, precision: "address",
     note: "按提供地址定位；地址参考点，非闸口实测位置"
   };
-  if (code === "SHIPPER") return { ...unresolved, name: "Shipper yard", city: "Oakland", state: "CA", note: "场地具体地址待确认" };
+  if (code === "SHIPPER") return {
+    ...unresolved, name: "Shipper yard", city: "Oakland", state: "CA", zip: "94607",
+    address: "2441 W 14th St, Oakland, CA 94607",
+    // User-confirmed address; U.S. Census Geocoder address-range reference point.
+    latitude: 37.814798893343, longitude: -122.303933072582, precision: "address",
+    note: "按提供地址定位；地址参考点，非闸口实测位置"
+  };
   const zip = code === "SFO" ? "94545" : /^(\d{5})(?:-\d{4})?$/.exec(code)?.[1];
   if (!zip) return unresolved;
   const place = lookup(zip);
