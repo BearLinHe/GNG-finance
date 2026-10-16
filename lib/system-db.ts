@@ -158,7 +158,7 @@ function getPool() {
   return pool;
 }
 
-async function withSystemClient<T>(fn: (client: PoolClient) => Promise<T>) {
+export async function withSystemClient<T>(fn: (client: PoolClient) => Promise<T>) {
   const client = await getPool().connect();
   try {
     await client.query("set statement_timeout = '20s'");
@@ -469,6 +469,37 @@ async function ensureSystemSchemaOnce() {
       await client.query("create index if not exists idx_warehouse_pickup_pricing_warehouse on warehouse_pickup_pricing_rules(warehouse_point)");
       await client.query("create index if not exists idx_expense_standards_category_kind on expense_standards(category, standard_kind)");
       await client.query("create index if not exists idx_expense_standards_month on expense_standards(billing_month)");
+      await client.query(`
+        create table if not exists oak_driver_imports (
+          id bigserial primary key,
+          file_hash varchar(64) not null unique,
+          file_name varchar(255) not null,
+          created_at timestamptz not null default now()
+        )
+      `);
+      await client.query("alter table oak_driver_imports add column if not exists period_from date");
+      await client.query("alter table oak_driver_imports add column if not exists period_to date");
+      await client.query(`
+        create table if not exists oak_driver_tasks (
+          id bigserial primary key,
+          import_id bigint not null references oak_driver_imports(id) on delete cascade,
+          sheet_name varchar(120) not null,
+          section varchar(30) not null,
+          source_row integer not null,
+          driver_name varchar(120) not null,
+          work_date date not null,
+          reference text,
+          nature text,
+          from_location text,
+          to_location text,
+          miles numeric(12, 2),
+          notes text,
+          raw_cells jsonb not null default '{}'::jsonb,
+          unique (import_id, sheet_name, section, source_row)
+        )
+      `);
+      await client.query("create index if not exists idx_oak_driver_tasks_date_driver on oak_driver_tasks(work_date, driver_name)");
+      await client.query("create index if not exists idx_oak_driver_tasks_import on oak_driver_tasks(import_id)");
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");

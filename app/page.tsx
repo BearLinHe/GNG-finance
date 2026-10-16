@@ -1500,7 +1500,7 @@ export default function Home() {
           </div>
         </header>
 
-        <main className="main table-workspace-main">
+        <main className={`main table-workspace-main${activeModule === "oak-transport" ? " oak-accounting-main" : ""}`}>
         <div className="page-head">
           <div>
             <h1 className="page-title">{pageTitle}</h1>
