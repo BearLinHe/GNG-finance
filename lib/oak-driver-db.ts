@@ -1,6 +1,8 @@
 import { ensureSystemSchema, withSystemClient } from "./system-db";
 import { summarizeDriverPeriods, type DriverActivitiesResponse, type DriverImport, type DriverTask } from "./oak-driver-types";
 import { resolveDriverBatchPeriod, type DriverBatchPeriod } from "./oak-driver-batch";
+import { priceDriverDays, summarizeIncome } from "./oak-income";
+import { readIncomeContext, readIncomeReviews, readIncomeRules } from "./oak-income-db";
 
 export async function saveDriverWorkbook(fileName: string, fileHash: string, tasks: DriverTask[], batchPeriod?: DriverBatchPeriod) {
   if (!tasks.length) throw new Error("请至少选择一个有作业记录的工作表");
@@ -54,17 +56,15 @@ export async function listDriverActivities(params: {
           and ($2::date is null or t.work_date >= $2::date)
           and ($3::date is null or t.work_date <= $3::date)
           and ($4::bigint is null or t.import_id=$4)
-          and ($5::text = '%%' or concat_ws(' ', t.reference,t.nature,t.from_location,t.to_location,t.notes) ilike $5)
       ), days as (
         select driver_name, work_date, count(*)::int as task_count, sum(miles)::float8 as miles,
           jsonb_agg(jsonb_build_object(
+            'id',id::text,'importId',import_id::int,
             'sheetName',sheet_name,'section',section,'sourceRow',source_row,'driverName',driver_name,
             'workDate',work_date::text,'reference',reference,'nature',nature,'fromLocation',from_location,
             'toLocation',to_location,'miles',miles::float8,'notes',notes,'rawCells',raw_cells,'fileName',file_name
           ) order by import_id, sheet_name, section, source_row, id) as tasks
         from filtered group by driver_name,work_date
-      ), page_drivers as (
-        select distinct driver_name from filtered order by driver_name limit $6 offset $7
       ), imports as (
         select i.id::int as id,i.file_name as "fileName",i.created_at::text as "createdAt",
           count(t.id)::int as "taskCount",count(distinct t.driver_name)::int as "driverCount",
@@ -76,7 +76,7 @@ export async function listDriverActivities(params: {
       select jsonb_build_object(
         'periodDays',coalesce((select jsonb_agg(jsonb_build_object(
           'driverName',driver_name,'workDate',work_date::text,'taskCount',task_count,'miles',miles,'tasks',tasks
-        ) order by driver_name,work_date) from days where driver_name in (select driver_name from page_drivers)),'[]'::jsonb),
+        ) order by driver_name,work_date) from days),'[]'::jsonb),
         'dateRange',(select jsonb_build_object('from',min(work_date)::text,'to',max(work_date)::text) from filtered),
         'totalCount',(select count(distinct driver_name)::int from filtered),
         'summary',(select jsonb_build_object('driverCount',count(distinct driver_name)::int,
@@ -84,8 +84,7 @@ export async function listDriverActivities(params: {
         'drivers',coalesce((select jsonb_agg(driver_name order by driver_name) from (select distinct driver_name from oak_driver_tasks) d),'[]'::jsonb),
         'imports',coalesce((select jsonb_agg(to_jsonb(i) order by "createdAt" desc,id desc) from imports i),'[]'::jsonb)
       ) as payload
-    `, [params.driverName, params.dateFrom || null, params.dateTo || null, params.importId,
-      `%${params.search.trim()}%`, params.pageSize, (params.page - 1) * params.pageSize]);
+    `, [params.driverName, params.dateFrom || null, params.dateTo || null, params.importId]);
     const { periodDays, ...payload } = result.rows[0].payload;
     type RawImport = Omit<DriverImport, "dateFrom" | "dateTo" | "hasOutOfPeriodRecords"> & { periodFrom: string | null; periodTo: string | null };
     const imports = payload.imports.map(({ periodFrom, periodTo, ...item }: RawImport): DriverImport => {
@@ -93,7 +92,25 @@ export async function listDriverActivities(params: {
       return { ...item, dateFrom: period.from, dateTo: period.to,
         hasOutOfPeriodRecords: item.recordDateFrom < period.from || item.recordDateTo > period.to };
     });
-    return { ...payload, imports, periods: summarizeDriverPeriods(periodDays), page: params.page, pageSize: params.pageSize };
+    const rules = await readIncomeRules(client);
+    const reviews = await readIncomeReviews(client, periodDays.flatMap((day: { tasks: DriverTask[] }) => day.tasks.map(task => task.id!)));
+    const context = await readIncomeContext(client, periodDays.flatMap((day: { tasks: DriverTask[] }) => day.tasks.map(task => task.id!)), reviews);
+    // Price complete driver-days before text search so an included return keeps its main-job context.
+    const search = params.search.trim().toLocaleLowerCase();
+    const ratedDays = priceDriverDays([...periodDays, ...context.days], rules, [...reviews, ...context.reviews]).slice(0, periodDays.length).map(day => {
+      const tasks = search ? day.tasks.filter(task => [task.reference, task.nature, task.fromLocation, task.toLocation, task.notes, task.income?.workLabel].filter(Boolean).join(" ").toLocaleLowerCase().includes(search)) : day.tasks;
+      const mileValues = tasks.map(task => task.miles).filter((miles): miles is number => miles != null);
+      return { ...day, tasks, taskCount: tasks.length, miles: mileValues.length ? Math.round(mileValues.reduce((sum, miles) => sum + miles, 0) * 100) / 100 : null, revenue: summarizeIncome(tasks) };
+    }).filter(day => day.tasks.length);
+    const periods = summarizeDriverPeriods(ratedDays);
+    const tasks = ratedDays.flatMap(day => day.tasks);
+    const dates = ratedDays.map(day => day.workDate).sort();
+    const miles = tasks.map(task => task.miles).filter((value): value is number => value != null);
+    return { ...payload, imports, periods: periods.slice((params.page - 1) * params.pageSize, params.page * params.pageSize),
+      dateRange: { from: dates[0] || null, to: dates.at(-1) || null }, totalCount: periods.length,
+      summary: { driverCount: periods.length, dayCount: new Set(dates).size, taskCount: tasks.length,
+        miles: miles.length ? Math.round(miles.reduce((sum, value) => sum + value, 0) * 100) / 100 : null, revenue: summarizeIncome(tasks) },
+      page: params.page, pageSize: params.pageSize };
   });
 }
 

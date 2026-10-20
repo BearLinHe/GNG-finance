@@ -19,7 +19,8 @@ export const locationPosition = (location?: DriverLocation | null) => location &
   && Number.isFinite(location.latitude) && Number.isFinite(location.longitude)
   && Math.abs(location.latitude) <= 90 && Math.abs(location.longitude) <= 180
   ? { lat: location.latitude, lng: location.longitude } : null;
-export const routeDateColor = (date: string) => ["#2563eb", "#0f766e", "#c2410c", "#7e22ce", "#be123c", "#0369a1", "#4d7c0f"][new Date(`${date}T00:00:00Z`).getUTCDay()] || "#2563eb";
+const routeColors = ["#2563eb", "#c2410c", "#0f766e", "#7e22ce", "#be123c", "#0369a1", "#4d7c0f"];
+export const routeDateColor = (date: string) => routeColors[new Date(`${date}T00:00:00Z`).getUTCDay()] || routeColors[0];
 
 export type DriverRoute = {
   id: string;
@@ -36,4 +37,21 @@ export function buildDriverRoutes(days: DriverDay[], locations: DriverLocations)
     from: task.fromLocation ? locations[locationKey(task.fromLocation)] || null : null,
     to: task.toLocation ? locations[locationKey(task.toLocation)] || null : null
   })));
+}
+
+export type DriverRouteStyle = { color: string; reverseOf: number | null };
+
+export function buildDriverRouteStyles(routes: DriverRoute[]): Record<string, DriverRouteStyle> {
+  const seen = new Map<string, number>();
+  return Object.fromEntries(routes.map(route => {
+    const from = locationPosition(route.from); const to = locationPosition(route.to);
+    let reverseOf: number | null = null;
+    if (from && to && (from.lat !== to.lat || from.lng !== to.lng)) {
+      const forward = JSON.stringify([route.date, from.lat, from.lng, to.lat, to.lng]);
+      const reverse = JSON.stringify([route.date, to.lat, to.lng, from.lat, from.lng]);
+      reverseOf = seen.get(reverse) ?? null;
+      if (!seen.has(forward)) seen.set(forward, route.number);
+    }
+    return [route.id, { color: routeColors[(route.number - 1) % routeColors.length], reverseOf }];
+  }));
 }

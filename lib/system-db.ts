@@ -500,6 +500,34 @@ async function ensureSystemSchemaOnce() {
       `);
       await client.query("create index if not exists idx_oak_driver_tasks_date_driver on oak_driver_tasks(work_date, driver_name)");
       await client.query("create index if not exists idx_oak_driver_tasks_import on oak_driver_tasks(import_id)");
+      await client.query(`
+        create table if not exists oak_income_rules (
+          id bigserial primary key,
+          name varchar(120) not null,
+          work_label varchar(120) not null,
+          from_location varchar(100), to_location varchar(100),
+          amount numeric(12, 2) not null check (amount >= 0),
+          billing_basis varchar(20) not null check (billing_basis in ('segment', 'trip')),
+          valid_from date, valid_to date,
+          active boolean not null default true,
+          updated_at timestamptz not null default now(),
+          check (valid_from is null or valid_to is null or valid_from <= valid_to)
+        )
+      `);
+      await client.query(`
+        create table if not exists oak_task_income_reviews (
+          task_id bigint primary key references oak_driver_tasks(id) on delete cascade,
+          mode varchar(20) not null check (mode in ('label', 'manual', 'included')),
+          work_label varchar(120), amount numeric(12, 2) check (amount >= 0),
+          included_task_id bigint references oak_driver_tasks(id) on delete cascade,
+          note varchar(1000) not null default '',
+          updated_at timestamptz not null default now(),
+          check ((mode = 'manual' and amount is not null and included_task_id is null)
+            or (mode = 'included' and amount is null and included_task_id is not null and included_task_id <> task_id)
+            or (mode = 'label' and work_label is not null and amount is null and included_task_id is null))
+        )
+      `);
+      await client.query("create index if not exists idx_oak_income_reviews_anchor on oak_task_income_reviews(included_task_id)");
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");

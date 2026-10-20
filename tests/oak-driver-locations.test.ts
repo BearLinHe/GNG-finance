@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { resolveDriverLocation, resolveDriverLocations } from "../lib/oak-driver-locations";
-import { buildDriverRoutes, locationKey, locationPosition, routeDateColor } from "../lib/oak-route-types";
+import { buildDriverRoutes, buildDriverRouteStyles, locationKey, locationPosition, routeDateColor } from "../lib/oak-route-types";
 import type { DriverDay, DriverTask } from "../lib/oak-driver-types";
 
 test("ZIP codes resolve locally to city, state and approximate area, including ZIP+4", () => {
@@ -83,4 +83,29 @@ test("routes preserve all jobs, dates and direction, including repeated or unloc
   assert.equal(locationKey(" sFo "), "SFO");
   assert.equal(routeDateColor(day.workDate), routeDateColor(day.workDate));
   assert.notEqual(routeDateColor("2026-10-05"), routeDateColor("2026-10-06"));
+});
+
+test("reverse route styling distinguishes same-day directions without changing endpoint coordinates", () => {
+  const task: DriverTask = { sheetName: "driver", section: "container", sourceRow: 1, driverName: "driver", workDate: "2026-09-01", reference: null, nature: null, fromLocation: "SFO", toLocation: "95215", miles: 77, notes: null, rawCells: {} };
+  const day: DriverDay = { driverName: task.driverName, workDate: task.workDate, taskCount: 6, miles: null, tasks: [task,
+    { ...task, sourceRow: 2, fromLocation: "95215", toLocation: "SFO" },
+    { ...task, sourceRow: 3 },
+    { ...task, sourceRow: 4, fromLocation: "PCC" },
+    { ...task, sourceRow: 5, fromLocation: "95215", toLocation: "95215" },
+    { ...task, sourceRow: 6, fromLocation: "95215", toLocation: "95215" }
+  ] };
+  const tomorrow: DriverDay = { ...day, workDate: "2026-09-02", taskCount: 1, tasks: [{ ...task, workDate: "2026-09-02", fromLocation: "95215", toLocation: "SFO" }] };
+  const routes = buildDriverRoutes([day, tomorrow], resolveDriverLocations(["SFO", "95215", "PCC"]));
+  const before = JSON.stringify(routes);
+  const styles = buildDriverRouteStyles(routes);
+  assert.equal(styles[routes[0].id].reverseOf, null);
+  assert.equal(styles[routes[1].id].reverseOf, 1);
+  assert.notEqual(styles[routes[0].id].color, styles[routes[1].id].color);
+  assert.equal(styles[routes[2].id].reverseOf, 2);
+  assert.equal(styles[routes[3].id].reverseOf, null);
+  assert.equal(styles[routes[4].id].reverseOf, null);
+  assert.equal(styles[routes[5].id].reverseOf, null);
+  assert.equal(styles[routes[6].id].reverseOf, null);
+  assert.equal(JSON.stringify(routes), before);
+  assert.deepEqual(buildDriverRouteStyles([]), {});
 });

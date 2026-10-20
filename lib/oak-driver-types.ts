@@ -1,4 +1,9 @@
+import { emptyIncomeSummary, type IncomeSummary, type TaskIncome } from "./oak-income";
+
 export type DriverTask = {
+  id?: string;
+  importId?: number;
+  income?: TaskIncome;
   sheetName: string;
   section: string;
   sourceRow: number;
@@ -35,6 +40,7 @@ export type DriverWorkbookPreview = {
 };
 
 export type DriverDay = {
+  revenue?: IncomeSummary;
   driverName: string;
   workDate: string;
   tasks: DriverTask[];
@@ -43,6 +49,7 @@ export type DriverDay = {
 };
 
 export type DriverPeriod = {
+  revenue?: IncomeSummary;
   driverName: string;
   dateFrom: string;
   dateTo: string;
@@ -72,7 +79,7 @@ export type DriverActivitiesResponse = {
   totalCount: number;
   page: number;
   pageSize: number;
-  summary: { driverCount: number; dayCount: number; taskCount: number; miles: number | null };
+  summary: { driverCount: number; dayCount: number; taskCount: number; miles: number | null; revenue?: IncomeSummary };
   drivers: string[];
   imports: DriverImport[];
 };
@@ -82,7 +89,7 @@ export function driverSubjectLabel(name: string) {
 }
 
 export function driverTaskLabel(task: DriverTask) {
-  return task.nature || (task.reference && /空车|带车架|挪柜/.test(task.reference) ? task.reference : "运输");
+  return task.income?.workLabel || task.nature || (task.reference && /空车|带车架|挪柜/.test(task.reference) ? task.reference : "运输");
 }
 
 export function summarizeDriverTasks(tasks: DriverTask[]): DriverDay[] {
@@ -111,6 +118,11 @@ export function summarizeDriverPeriods(days: DriverDay[]): DriverPeriod[] {
     period.taskCount += day.taskCount;
     if (day.miles != null) period.miles = Math.round(((period.miles || 0) + day.miles) * 100) / 100;
     period.days.push(day);
+    if (day.revenue) {
+      const revenue = period.revenue || emptyIncomeSummary();
+      period.revenue = { amount: (Math.round(revenue.amount * 100) + Math.round(day.revenue.amount * 100)) / 100,
+        pricedCount: revenue.pricedCount + day.revenue.pricedCount, pendingCount: revenue.pendingCount + day.revenue.pendingCount, includedCount: revenue.includedCount + day.revenue.includedCount };
+    }
     for (const task of day.tasks) {
       const label = driverTaskLabel(task);
       const type = period.taskTypes.find(item => item.label === label);
