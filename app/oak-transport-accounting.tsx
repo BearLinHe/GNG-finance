@@ -2,11 +2,14 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import { ArrowRight, Banknote, CalendarRange, Check, ChevronRight, FileSpreadsheet, FileText, List, Map as MapIcon, Pencil, RefreshCw, Search, Trash2, TriangleAlert, Truck, Upload, UserRound, X, XCircle } from "lucide-react";
+import { ArrowRight, Banknote, CalendarRange, Check, ChevronRight, FileSpreadsheet, FileText, Layers3, List, Map as MapIcon, Pencil, RefreshCw, Search, Trash2, TriangleAlert, Truck, Upload, UserRound, Wallet, X, XCircle } from "lucide-react";
 import { driverSubjectLabel, driverTaskLabel, summarizeDriverPeriods, summarizeDriverTasks, type DriverActivitiesResponse, type DriverDay, type DriverPeriod, type DriverTask, type DriverWorkbookPreview } from "@/lib/oak-driver-types";
 import { locationKey, type DriverLocations } from "@/lib/oak-route-types";
 import OakLocationLabel from "./oak-location-label";
 import { incomeMoney, IncomeReviewDialog, IncomeTotal, OakIncomeRules } from "./oak-income-controls";
+import OakTransportJobs from "./oak-transport-jobs";
+import OakWeeklySettlements from "./oak-weekly-settlements";
+import { payeeIdentity, summarizePayeeTypes, type PayeeType } from "@/lib/oak-payee";
 
 const DriverRouteMap = dynamic(() => import("./oak-driver-route-map"), { ssr: false, loading: () => <div className="oak-map-loading" role="status">正在准备地图...</div> });
 const locationCache: DriverLocations = {};
@@ -30,15 +33,19 @@ async function readJson<T>(response: Response): Promise<T> {
 function TaskCounts({ period }: { period: DriverPeriod }) {
   return <div className="oak-work-counts">{period.taskTypes.map(type => <span className="oak-work-count" key={type.label}><b>{type.label}</b><span>{type.count} 段</span></span>)}</div>;
 }
+function periodIdentity(period: DriverPeriod) {
+  const identity = summarizePayeeTypes(period.days.flatMap(day => day.tasks));
+  return identity.conflict ? "身份待核对" : payeeIdentity(period.driverName, period.driverName, identity.type).label;
+}
 
 function PeriodsTable({ periods, onSelect, emptyText, busy = false }: {
   periods: DriverPeriod[]; onSelect: (period: DriverPeriod) => void; emptyText: string; busy?: boolean;
 }) {
   return <table className="oak-periods-table" aria-label="司机周期作业汇总" aria-busy={busy}>
-    <thead><tr><th>司机 / 车辆</th><th>期间作业</th><th className="oak-numeric">作业天数</th><th className="oak-numeric">作业路段</th><th className="oak-numeric">里程 / mi</th><th className="oak-numeric">已计价作业收入</th><th aria-label="周期详情" /></tr></thead>
+    <thead><tr><th>司机 / 车主 / 车辆</th><th>期间作业</th><th className="oak-numeric">作业天数</th><th className="oak-numeric">作业路段</th><th className="oak-numeric">里程 / mi</th><th className="oak-numeric">已计价作业收入</th><th aria-label="周期详情" /></tr></thead>
     <tbody>
       {periods.map(period => <tr key={period.driverName}>
-        <td className="oak-period-subject"><div className="oak-subject-identity"><span className="oak-subject-icon">{driverSubjectLabel(period.driverName) === "车辆编号" ? <Truck size={17} /> : <UserRound size={17} />}</span><div><button className="oak-driver-name" disabled={busy} onClick={() => onSelect(period)}>{period.driverName}</button><span className="oak-subject-dates" title={`实际作业日期：${rangeText(period.dateFrom, period.dateTo)}`}>{driverSubjectLabel(period.driverName) === "车辆编号" ? "车辆 · " : ""}{shortDate(period.dateFrom)} 至 {shortDate(period.dateTo)}</span></div></div></td>
+        <td className="oak-period-subject"><div className="oak-subject-identity"><span className="oak-subject-icon">{periodIdentity(period) === "司机" ? <UserRound size={17} /> : <Truck size={17} />}</span><div><button className="oak-driver-name" disabled={busy} onClick={() => onSelect(period)}>{period.driverName}</button><span className={`oak-payee-tag${periodIdentity(period) === "车主" ? " owner" : ""}`}>{periodIdentity(period)}</span><span className="oak-subject-dates" title={`实际作业日期：${rangeText(period.dateFrom, period.dateTo)}`}>{shortDate(period.dateFrom)} 至 {shortDate(period.dateTo)}</span></div></div></td>
         <td className="oak-period-work"><TaskCounts period={period} /></td>
         <td className="oak-numeric" data-label="作业天数">{period.dayCount}</td>
         <td className="oak-numeric" data-label="作业路段">{period.taskCount}</td>
@@ -116,7 +123,7 @@ function PeriodDetails({ selection, onClose, onIncomeSaved }: { selection: Perio
   return <div className="oak-task-backdrop" onMouseDown={onClose}>
     <section ref={dialog} className="oak-task-drawer" role="dialog" aria-modal="true" aria-label="周期作业详情" onMouseDown={event => event.stopPropagation()}>
       <header className="oak-detail-header">
-        <div className="oak-detail-identity"><span className="oak-subject-icon">{driverSubjectLabel(period.driverName) === "车辆编号" ? <Truck size={22} /> : <UserRound size={22} />}</span><div><span className="oak-detail-kicker">{driverSubjectLabel(period.driverName)}作业明细</span><h2>{period.driverName}</h2><div className="oak-period-range"><CalendarRange size={14} /><span>统计周期</span><strong>{rangeText(selection.from, selection.to)}</strong></div></div></div>
+        <div className="oak-detail-identity"><span className="oak-subject-icon">{periodIdentity(period) === "司机" ? <UserRound size={22} /> : <Truck size={22} />}</span><div><span className="oak-detail-kicker">{periodIdentity(period)}作业明细</span><h2>{period.driverName}</h2><div className="oak-period-range"><CalendarRange size={14} /><span>统计周期</span><strong>{rangeText(selection.from, selection.to)}</strong></div></div></div>
         <dl className="oak-detail-metrics"><div><dt>作业天数</dt><dd>{period.dayCount}<small>天</small></dd></div><div><dt>作业路段</dt><dd>{period.taskCount}<small>段</small></dd></div><div><dt>记录里程</dt><dd>{number(period.miles)}<small>mi</small></dd></div></dl>
         <button className="icon-button oak-detail-close" title="关闭作业详情" onClick={onClose}><X size={18} /></button>
       </header>
@@ -138,7 +145,7 @@ function PeriodDetails({ selection, onClose, onIncomeSaved }: { selection: Perio
 }
 
 export default function OakTransportAccounting() {
-  const [workspaceView, setWorkspaceView] = useState<"activities" | "rules">("activities");
+  const [workspaceView, setWorkspaceView] = useState<"activities" | "rules" | "jobs" | "settlements">("activities");
   const [data, setData] = useState(emptyData);
   const [driverName, setDriverName] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -156,7 +163,7 @@ export default function OakTransportAccounting() {
   const [preview, setPreview] = useState<DriverWorkbookPreview | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [previewTab, setPreviewTab] = useState<"sheets" | "periods">("sheets");
-  const [mappings, setMappings] = useState<Record<string, { selected: boolean; driverName: string }>>({});
+  const [mappings, setMappings] = useState<Record<string, { selected: boolean; driverName: string; payeeType: PayeeType | null }>>({});
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodSelection | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadFile = useRef<File | null>(null);
@@ -217,7 +224,7 @@ export default function OakTransportAccounting() {
 
   const selectedTasks = useMemo(() => (preview?.tasks || [])
     .filter(task => mappings[task.sheetName]?.selected)
-    .map(task => ({ ...task, driverName: mappings[task.sheetName].driverName.trim() })), [preview, mappings]);
+    .map(task => ({ ...task, driverName: mappings[task.sheetName].driverName.trim(), payeeType: mappings[task.sheetName].payeeType })), [preview, mappings]);
   const previewDays = useMemo(() => summarizeDriverTasks(selectedTasks), [selectedTasks]);
   const previewPeriods = useMemo(() => summarizeDriverPeriods(previewDays), [previewDays]);
   const selectedBatch = data.imports.find(item => String(item.id) === importId);
@@ -239,7 +246,7 @@ export default function OakTransportAccounting() {
       const form = new FormData(); form.append("file", file);
       const body = await readJson<{ preview: DriverWorkbookPreview }>(await fetch("/api/oak-driver-imports", { method: "POST", body: form }));
       uploadFile.current = file;
-      setMappings(Object.fromEntries(body.preview.sheets.map(sheet => [sheet.sheetName, { selected: sheet.selected, driverName: sheet.driverName }])));
+      setMappings(Object.fromEntries(body.preview.sheets.map(sheet => [sheet.sheetName, { selected: sheet.selected, driverName: sheet.driverName, payeeType: sheet.payeeType || payeeIdentity(sheet.sheetName).type }])));
       setPreviewError(""); setPreviewTab("sheets"); setSelectedPeriod(null); setPreview(body.preview);
     } catch (err) { setError(err instanceof Error ? err.message : "读取 Excel 失败"); }
     finally { setUploading(false); }
@@ -251,7 +258,7 @@ export default function OakTransportAccounting() {
     try {
       const form = new FormData(); form.append("file", uploadFile.current); form.append("action", "import");
       form.append("mappings", JSON.stringify(preview.sheets.filter(sheet => mappings[sheet.sheetName]?.selected)
-        .map(sheet => ({ sheetName: sheet.sheetName, driverName: mappings[sheet.sheetName].driverName }))));
+        .map(sheet => ({ sheetName: sheet.sheetName, driverName: mappings[sheet.sheetName].driverName, payeeType: mappings[sheet.sheetName].payeeType }))));
       const result = await readJson<{ importId: number; duplicate: boolean }>(await fetch("/api/oak-driver-imports", { method: "POST", body: form }));
       const savedBatch = data.imports.find(item => item.id === result.importId);
       const range = savedBatch ? { from: savedBatch.dateFrom, to: savedBatch.dateTo } : preview.batchPeriod;
@@ -272,11 +279,12 @@ export default function OakTransportAccounting() {
 
   return (
     <section className="oak-driver-workspace" aria-label="OAK 运输部司机周期作业">
-      <div className="oak-income-tabs" role="tablist" aria-label="运输部核算视图"><button role="tab" aria-selected={workspaceView === "activities"} className={workspaceView === "activities" ? "active" : ""} onClick={() => setWorkspaceView("activities")}><List size={16} />司机作业收入</button><button role="tab" aria-selected={workspaceView === "rules"} className={workspaceView === "rules" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("rules"); }}><Banknote size={16} />收入计价标准</button></div>
+      <div className="oak-income-tabs" role="tablist" aria-label="运输部核算视图"><button role="tab" aria-selected={workspaceView === "activities"} className={workspaceView === "activities" ? "active" : ""} onClick={() => setWorkspaceView("activities")}><List size={16} />作业收入</button><button role="tab" aria-selected={workspaceView === "jobs"} className={workspaceView === "jobs" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("jobs"); }}><Layers3 size={16} />运输任务</button><button role="tab" aria-selected={workspaceView === "settlements"} className={workspaceView === "settlements" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("settlements"); }}><Wallet size={16} />周结算</button><button role="tab" aria-selected={workspaceView === "rules"} className={workspaceView === "rules" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("rules"); }}><Banknote size={16} />收入计价标准</button></div>
       {workspaceView === "rules" ? <OakIncomeRules onChange={() => setReload(value => value + 1)} /> : null}
-      <div className="oak-income-activities" hidden={workspaceView !== "activities"}>
+      {workspaceView === "settlements" ? <OakWeeklySettlements initialDate={dateFrom || selectedBatch?.dateFrom || ""} drivers={data.drivers} subjects={data.subjects} /> : null}
+      <div className="oak-income-activities" hidden={workspaceView !== "activities" && workspaceView !== "jobs"}>
       <div className="oak-driver-actions">
-        <div><h2>司机周期作业</h2>{selectedBatch ? <span className="muted">{selectedBatch.fileName}</span> : null}</div>
+        <div><h2>{workspaceView === "jobs" ? "运输任务归集" : "司机 / 车主周期作业"}</h2>{selectedBatch ? <span className="muted">{selectedBatch.fileName}</span> : null}</div>
         <div className="oak-command-buttons">
           <button className="icon-button" title="刷新作业" onClick={() => setReload(value => value + 1)} disabled={loading}><RefreshCw size={16} /></button>
           {selectedBatch ? <button className="icon-button danger-icon" title="删除当前导入批次" onClick={() => void removeImport()}><Trash2 size={16} /></button> : null}
@@ -285,7 +293,7 @@ export default function OakTransportAccounting() {
         </div>
       </div>
       <div className="oak-driver-filters">
-        <div className="field"><label htmlFor="oak-driver">司机 / 车辆</label><select id="oak-driver" value={driverName} onChange={e => { setDriverName(e.target.value); setPage(1); }}><option value="">全部司机 / 车辆</option>{data.drivers.map(name => <option key={name} value={name}>{driverSubjectLabel(name) === "车辆编号" ? `${name}（车辆）` : name}</option>)}</select></div>
+        <div className="field"><label htmlFor="oak-driver">司机 / 车主 / 车辆</label><select id="oak-driver" value={driverName} onChange={e => { setDriverName(e.target.value); setPage(1); }}><option value="">全部司机 / 车主 / 车辆</option>{data.drivers.map(name => { const identity = data.subjects?.find(subject => subject.name === name); return <option key={name} value={name}>{name}（{identity?.conflict ? "身份待核对" : payeeIdentity(name, name, identity?.payeeType).label}）</option>; })}</select></div>
         <div className="field"><label htmlFor="oak-from">开始日期</label><input id="oak-from" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} /></div>
         <div className="field"><label htmlFor="oak-to">结束日期</label><input id="oak-to" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} /></div>
         <div className="field"><label htmlFor="oak-import">导入批次</label><select id="oak-import" value={importId} onChange={e => selectBatch(e.target.value)}><option value="">全部批次</option>{data.imports.map(item => <option key={item.id} value={item.id}>{item.dateFrom.slice(0, 4)} · {shortDate(item.dateFrom)} - {shortDate(item.dateTo)} · {item.fileName}</option>)}</select></div>
@@ -298,7 +306,7 @@ export default function OakTransportAccounting() {
       <div className="oak-income-strip" aria-label="作业收入汇总" aria-busy={loading}><div><span>已计价作业收入 / USD</span><strong>{data.summary.revenue?.pricedCount ? incomeMoney(data.summary.revenue.amount) : "—"}</strong></div><div><span>已计价作业</span><strong>{data.summary.revenue?.pricedCount || 0}<small>段</small></strong></div><div><span>待计价作业</span><strong className="oak-income-pending">{data.summary.revenue?.pendingCount ?? data.summary.taskCount}<small>段</small></strong></div><div><span>已并入整趟</span><strong>{data.summary.revenue?.includedCount || 0}<small>段</small></strong></div></div>
       <div className="oak-driver-ledger">
         <div className="oak-ledger-head"><div><h3>司机周期汇总</h3><div className="oak-period-range"><CalendarRange size={14} /><strong>{rangeText(scopeFrom, scopeTo)}</strong>{search.trim() ? <span>匹配：{search.trim()}</span> : null}{loading ? <span className="oak-load-status" role="status">读取中</span> : null}</div></div><dl className="oak-overview-metrics" aria-label="周期汇总"><div><dt>司机 / 车辆</dt><dd>{number(data.summary.driverCount)}<small>个</small></dd></div><div><dt>作业日期</dt><dd>{number(data.summary.dayCount)}<small>天</small></dd></div><div><dt>作业路段</dt><dd>{number(data.summary.taskCount)}<small>段</small></dd></div><div><dt>记录里程</dt><dd>{number(data.summary.miles)}<small>mi</small></dd></div></dl></div>
-        <div ref={ledgerScroll} className="table-wrap oak-driver-scroll"><PeriodsTable periods={data.periods} onSelect={period => setSelectedPeriod({ period, from: scopeFrom || period.dateFrom, to: scopeTo || period.dateTo, batchPeriod: selectedBatch ? { from: selectedBatch.dateFrom, to: selectedBatch.dateTo } : undefined })} busy={loading} emptyText={loading ? "正在读取作业..." : data.imports.length ? "没有符合筛选条件的作业" : "暂无作业记录"} /></div>
+        {workspaceView === "jobs" ? <OakTransportJobs tasks={data.periods.flatMap(period => period.days.flatMap(day => day.tasks))} busy={loading} onSaved={async () => { if (!await load()) throw new Error("已保存归集，请刷新作业核对最新结果"); }} /> : <div ref={ledgerScroll} className="table-wrap oak-driver-scroll"><PeriodsTable periods={data.periods} onSelect={period => setSelectedPeriod({ period, from: scopeFrom || period.dateFrom, to: scopeTo || period.dateTo, batchPeriod: selectedBatch ? { from: selectedBatch.dateFrom, to: selectedBatch.dateTo } : undefined })} busy={loading} emptyText={loading ? "正在读取作业..." : data.imports.length ? "没有符合筛选条件的作业" : "暂无作业记录"} /></div>}
         <div className="pagination">
           <span className="pagination-info">共 {data.totalCount} 个</span>
           <select className="page-size" aria-label="作业每页条数" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50 / 页</option><option value={100}>100 / 页</option><option value={300}>300 / 页</option></select>
@@ -311,7 +319,7 @@ export default function OakTransportAccounting() {
         <section className="oak-import-dialog" role="dialog" aria-modal="true" aria-label="确认 Excel 导入" onMouseDown={event => event.stopPropagation()}>
           <div className="oak-dialog-head"><div><h2>确认 Excel 导入</h2><span>{preview.fileName}</span></div><button className="icon-button" title="关闭导入预览" onClick={() => setPreview(null)} disabled={saving}><X size={18} /></button></div>
           <div className="oak-import-period"><CalendarRange size={15} /><span>批次周期</span><strong>{rangeText(preview.batchPeriod.from, preview.batchPeriod.to)}</strong></div>
-          <div className="oak-import-meta"><span>已选 {previewPeriods.length} 个司机 / 车辆</span><span>{selectedTasks.length} 段作业</span><span>{previewDays.length} 条每日记录</span></div>
+          <div className="oak-import-meta"><span>已选 {previewPeriods.length} 个司机 / 车主 / 车辆</span><span>{selectedTasks.length} 段作业</span><span>{previewDays.length} 条每日记录</span></div>
           {previewError ? <div className="error" role="alert">{previewError}</div> : null}
           {preview.warnings.length ? <div className="oak-import-warnings">{preview.warnings.map(item => <p key={item}>{item}</p>)}</div> : null}
           <div className="oak-preview-tabs" role="tablist" aria-label="导入预览视图">
@@ -319,11 +327,11 @@ export default function OakTransportAccounting() {
             <button role="tab" aria-selected={previewTab === "periods"} className={previewTab === "periods" ? "active" : ""} onClick={() => setPreviewTab("periods")}>作业预览</button>
           </div>
           <div className="oak-import-scroll table-wrap">
-            {previewTab === "sheets" ? <table className="oak-import-table"><thead><tr><th>导入</th><th>工作表</th><th>司机 / 车辆编号</th><th>日期范围</th><th>路段</th><th>核对信息</th></tr></thead>
+            {previewTab === "sheets" ? <table className="oak-import-table"><thead><tr><th>导入</th><th>工作表</th><th>归属姓名 / 身份</th><th>日期范围</th><th>路段</th><th>核对信息</th></tr></thead>
               <tbody>{preview.sheets.map(sheet => <tr key={sheet.sheetName}>
                 <td><input type="checkbox" aria-label={`导入 ${sheet.sheetName}`} disabled={!sheet.taskCount} checked={mappings[sheet.sheetName]?.selected || false} onChange={e => setMappings(value => ({ ...value, [sheet.sheetName]: { ...value[sheet.sheetName], selected: e.target.checked } }))} /></td>
                 <td><strong>{sheet.sheetName}</strong>{driverSubjectLabel(mappings[sheet.sheetName]?.driverName || sheet.driverName) === "车辆编号" ? <small className="oak-subject-kind">车辆编号</small> : null}</td>
-                <td><input aria-label={`${sheet.sheetName} 的司机或车辆编号`} maxLength={120} value={mappings[sheet.sheetName]?.driverName || ""} disabled={!sheet.taskCount} onChange={e => setMappings(value => ({ ...value, [sheet.sheetName]: { ...value[sheet.sheetName], driverName: e.target.value } }))} /></td>
+                <td><input aria-label={`${sheet.sheetName} 的司机或车辆编号`} maxLength={120} value={mappings[sheet.sheetName]?.driverName || ""} disabled={!sheet.taskCount} onChange={e => setMappings(value => ({ ...value, [sheet.sheetName]: { ...value[sheet.sheetName], driverName: e.target.value } }))} /><select className="oak-import-payee-type" aria-label={`${sheet.sheetName} 的结算身份`} disabled={!sheet.taskCount} value={mappings[sheet.sheetName]?.payeeType || ""} onChange={e => setMappings(value => ({ ...value, [sheet.sheetName]: { ...value[sheet.sheetName], payeeType: e.target.value === "owner" || e.target.value === "driver" ? e.target.value : payeeIdentity(value[sheet.sheetName].driverName, sheet.sheetName).type } }))}><option value="">按姓名识别 / 车辆待指定</option><option value="driver">司机 · 司机工资</option><option value="owner">车主 · 车主价格</option></select></td>
                 <td>{sheet.dateFrom ? `${sheet.dateFrom} 至 ${sheet.dateTo}` : "无作业日期"}</td><td>{sheet.taskCount}</td><td className="oak-import-note">{sheet.warnings.join("；") || (sheet.taskCount ? "-" : "没有作业记录")}</td>
               </tr>)}</tbody></table> : <PeriodsTable periods={previewPeriods} onSelect={period => setSelectedPeriod({ period, from: preview.batchPeriod.from, to: preview.batchPeriod.to, batchPeriod: preview.batchPeriod })} emptyText="请先选择作业工作表" />}
           </div>

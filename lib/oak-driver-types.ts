@@ -1,9 +1,11 @@
 import { emptyIncomeSummary, type IncomeSummary, type TaskIncome } from "./oak-income";
+import { payeeIdentity, type PayeeType } from "./oak-payee";
 
 export type DriverTask = {
   id?: string;
   importId?: number;
   income?: TaskIncome;
+  payeeType?: PayeeType | null;
   sheetName: string;
   section: string;
   sourceRow: number;
@@ -20,6 +22,7 @@ export type DriverTask = {
 };
 
 export type DriverSheetPreview = {
+  payeeType?: PayeeType | null;
   sheetName: string;
   driverName: string;
   selected: boolean;
@@ -74,6 +77,7 @@ export type DriverImport = {
 };
 
 export type DriverActivitiesResponse = {
+  subjects?: Array<{ name: string; payeeType: PayeeType | null; conflict: boolean }>;
   periods: DriverPeriod[];
   dateRange: { from: string | null; to: string | null };
   totalCount: number;
@@ -85,7 +89,7 @@ export type DriverActivitiesResponse = {
 };
 
 export function driverSubjectLabel(name: string) {
-  return /^\d+$/.test(name.trim()) ? "车辆编号" : "司机";
+  return payeeIdentity(name).label;
 }
 
 export function driverTaskLabel(task: DriverTask) {

@@ -500,6 +500,7 @@ async function ensureSystemSchemaOnce() {
       `);
       await client.query("create index if not exists idx_oak_driver_tasks_date_driver on oak_driver_tasks(work_date, driver_name)");
       await client.query("create index if not exists idx_oak_driver_tasks_import on oak_driver_tasks(import_id)");
+      await client.query("alter table oak_driver_tasks add column if not exists payee_type varchar(20) check(payee_type in ('driver','owner'))");
       await client.query(`
         create table if not exists oak_income_rules (
           id bigserial primary key,
@@ -528,6 +529,33 @@ async function ensureSystemSchemaOnce() {
         )
       `);
       await client.query("create index if not exists idx_oak_income_reviews_anchor on oak_task_income_reviews(included_task_id)");
+      await client.query(`create table if not exists oak_weekly_settlements (
+        id bigserial primary key, subject varchar(120) not null, week_start date not null, week_end date not null,
+        payee_name varchar(150) not null, payee_type varchar(20) not null check(payee_type in ('driver','owner')),
+        base_amount numeric(12,2) not null check(base_amount >= 0), adjustments jsonb not null default '[]',
+        total_amount numeric(12,2) not null check(total_amount >= 0), note varchar(1000) not null,
+        status varchar(20) not null default 'draft' check(status in ('draft','confirmed')),
+        snapshot jsonb not null, source_hash varchar(64) not null, confirmed_at timestamptz,
+        updated_at timestamptz not null default now(), unique(subject,week_start),
+        check(extract(dow from week_start)=6 and week_end=week_start+6)
+      )`);
+      await client.query(`create table if not exists oak_settlement_tasks (
+        settlement_id bigint not null references oak_weekly_settlements(id) on delete cascade,
+        task_id bigint not null unique references oak_driver_tasks(id) on delete restrict,
+        primary key(settlement_id,task_id)
+      )`);
+      await client.query(`create table if not exists oak_settlement_payments (
+        id bigserial primary key, settlement_id bigint not null references oak_weekly_settlements(id) on delete restrict,
+        amount numeric(12,2) not null check(amount>0), payment_date date not null, reference varchar(200) not null,
+        note varchar(1000) not null default '', voided_at timestamptz, void_reason varchar(1000),
+        created_at timestamptz not null default now()
+      )`);
+      await client.query("create index if not exists idx_oak_settlement_payments_parent on oak_settlement_payments(settlement_id)");
+      await client.query(`create table if not exists oak_workflow_audit (
+        id bigserial primary key, entity_kind varchar(30) not null, entity_id bigint not null,
+        event varchar(60) not null, details jsonb not null default '{}', created_at timestamptz not null default now()
+      )`);
+      await client.query("create index if not exists idx_oak_workflow_audit_entity on oak_workflow_audit(entity_kind,entity_id,id)");
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");

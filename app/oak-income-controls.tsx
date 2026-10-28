@@ -6,13 +6,13 @@ import { incomeWorkLabel, type IncomeRule, type IncomeSummary } from "@/lib/oak-
 import type { DriverDay, DriverTask } from "@/lib/oak-driver-types";
 
 export const incomeMoney = (value: number) => value.toLocaleString("en-US", { style: "currency", currency: "USD" });
-async function json<T>(response: Response): Promise<T> {
+export async function json<T>(response: Response): Promise<T> {
   const data = await response.json(); if (!response.ok) throw new Error(data.error || "请求失败"); return data;
 }
 export function IncomeTotal({ value }: { value?: IncomeSummary }) {
   return <div className="oak-income-total"><strong>{value?.pricedCount ? incomeMoney(value.amount) : "—"}</strong><small>{value ? <>{value.pricedCount} 段已计价{value.includedCount ? ` · ${value.includedCount} 段已并入` : ""}</> : "未计价"}</small>{value?.pendingCount ? <span className="oak-income-pending">{value.pendingCount} 段待计价</span> : null}</div>;
 }
-function IncomeDialog({ title, busy, onClose, children }: { title: string; busy: boolean; onClose: () => void; children: ReactNode }) {
+export function IncomeDialog({ title, busy, onClose, children, wide = false }: { title: string; busy: boolean; onClose: () => void; children: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -20,16 +20,23 @@ function IncomeDialog({ title, busy, onClose, children }: { title: string; busy:
     ref.current?.querySelector<HTMLElement>("input, select, button")?.focus();
     return () => { document.body.style.overflow = overflow; if (previous?.isConnected) previous.focus(); };
   }, []);
-  return <div className="oak-income-backdrop" onMouseDown={() => !busy && onClose()}><section ref={ref} className="oak-income-dialog" data-income-dialog role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()} onKeyDown={event => {
-    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!busy) onClose(); }
-    if (event.key === "Tab") {
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => {
+      const top = Array.from(document.querySelectorAll<HTMLElement>("[data-income-dialog]")).filter(element => element.getClientRects().length).at(-1);
+      if (top !== ref.current) return;
+      if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); if (!busy) onClose(); }
+      if (event.key !== "Tab") return;
       event.stopPropagation();
       const items = Array.from(ref.current?.querySelectorAll<HTMLElement>("input:not(:disabled), select:not(:disabled), textarea:not(:disabled), button:not(:disabled), a[href]") || []).filter(item => item.getClientRects().length);
       const first = items[0]; const last = items.at(-1);
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!ref.current?.contains(document.activeElement)) { event.preventDefault(); (event.shiftKey ? last : first)?.focus(); }
+      else if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-    }
-  }}><header className="oak-dialog-head"><div><span>OAK 运输部 · 作业收入</span><h2>{title}</h2></div><button className="icon-button" title="关闭收入编辑" disabled={busy} onClick={onClose}><X size={17} /></button></header>{children}</section></div>;
+    };
+    document.addEventListener("keydown", handleKey, true);
+    return () => document.removeEventListener("keydown", handleKey, true);
+  }, [busy, onClose]);
+  return <div className="oak-income-backdrop" onMouseDown={() => !busy && onClose()}><section ref={ref} className={`oak-income-dialog${wide ? " oak-workflow-dialog" : ""}`} data-income-dialog role="dialog" aria-modal="true" aria-label={title} onMouseDown={event => event.stopPropagation()}><header className="oak-dialog-head"><div><span>OAK 运输部核算</span><h2>{title}</h2></div><button className="icon-button" title="关闭编辑窗口" disabled={busy} onClick={onClose}><X size={17} /></button></header>{children}</section></div>;
 }
 
 type RuleForm = { id: number | null; name: string; workLabel: string; fromLocation: string; toLocation: string; amount: string; billingBasis: "segment" | "trip"; validFrom: string; validTo: string; active: boolean };

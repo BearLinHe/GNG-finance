@@ -113,6 +113,7 @@ export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews:
     if (income.source !== "rule" || income.billingBasis !== "trip") continue;
     const rule = rules.find(candidate => candidate.id === income.ruleId)!;
     const sameTripCandidates = tasks.filter(candidate => candidate.driverName === task.driverName && candidate.workDate === task.workDate && candidate.importId === task.importId
+      && !(candidate.income.review?.mode === "included" && candidate.income.includedTaskId === task.id)
       && normalizeIncomeWork(candidate.income.workLabel) === normalizeIncomeWork(rule.workLabel)
       && (!rule.fromLocation || normalizeIncomeText(candidate.fromLocation) === normalizeIncomeText(rule.fromLocation))
       && (!rule.toLocation || normalizeIncomeText(candidate.toLocation) === normalizeIncomeText(rule.toLocation)));

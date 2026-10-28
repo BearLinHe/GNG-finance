@@ -17,6 +17,18 @@ function addDriver(workbook: ExcelJS.Workbook, name: string) {
   return sheet;
 }
 
+test("imports owner markers as separate payee metadata while preserving sheet names and raw pay columns", async () => {
+  const workbook = new ExcelJS.Workbook();
+  for (const name of ["O Don", "O王肃", "○ 李师傅", "Oliver", "张晓澄", "0608"]) {
+    addDriver(workbook, name).getRow(3).values = [new Date("2026-10-03"), "trailer 1", "TCY1直送", "SFO", "95206", 68, 150, 400];
+  }
+  const preview = await parseDriverWorkbook(await bytes(workbook), "10_3-10_9.xlsx");
+  assert.deepEqual(preview.sheets.map(sheet => sheet.payeeType), ["owner", "owner", "owner", "driver", "driver", null]);
+  assert.deepEqual(preview.tasks.map(task => task.payeeType), ["owner", "owner", "owner", "driver", "driver", null]);
+  assert.equal(preview.tasks[0].sheetName, "O Don"); assert.equal(preview.tasks[0].driverName, "O Don");
+  assert.equal(preview.tasks[0].rawCells.G3, 150); assert.equal(preview.tasks[0].rawCells.H3, 400);
+});
+
 test("recognizes separate sea-container and Local sections, merged references, and carried dates", async () => {
   const workbook = new ExcelJS.Workbook();
   const sheet = addDriver(workbook, "Driver A");

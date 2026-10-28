@@ -1282,6 +1282,9 @@ button {
 .oak-subject-identity > div { min-width: 0; }
 .oak-subject-icon { display: inline-grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border: 1px solid #e2e8f0; border-radius: 6px; background: #f8fafc; color: #64748b; }
 .oak-subject-dates { display: block; margin-top: 6px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.oak-payee-tag { display: inline-block; margin-left: 7px; padding: 2px 5px; border-radius: 3px; color: #475569; background: #f1f5f9; font-size: 10px; line-height: 1.5; font-weight: 500; vertical-align: middle; }
+.oak-payee-tag.owner { color: #047857; background: #ecfdf5; }
+.oak-import-payee-type { display: block; width: 145px; max-width: 100%; margin-top: 7px; min-height: 32px; padding: 5px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--text); background: #fff; font: inherit; font-size: 11px; }
 .oak-driver-name { display: inline-block; max-width: 100%; padding: 0; text-align: left; border: 0; background: none; color: var(--text); font: inherit; font-weight: 700; overflow-wrap: anywhere; cursor: pointer; }
 .oak-driver-name:hover { color: var(--blue); }
 /* Keep empty tracks so every driver's work names and counts use the same columns. */
@@ -1669,6 +1672,84 @@ button {
   .oak-income-fields { padding: 16px; gap: 14px; }
   .oak-income-dialog .oak-dialog-actions { padding: 12px 14px; gap: 8px; flex-wrap: wrap; }
   .oak-income-dialog .oak-dialog-head { padding: 14px 16px; }
+}
+
+.oak-workflow-dialog { width: min(1040px, 100%); }
+.oak-workflow-context { display: grid; gap: 7px; padding: 14px 18px; background: #f8fafc; border-bottom: 1px solid var(--line); color: #334155; font-size: 12px; overflow-wrap: anywhere; flex: 0 0 auto; }
+.oak-workflow-context small { font-size: 11px; line-height: 1.7; color: var(--muted); }
+.oak-workflow-context > .oak-income-status { justify-self: start; }
+.oak-jobs-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.oak-job-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.oak-job-controls select, .oak-settlement-week input { padding: 7px 9px; border: 1px solid var(--line); border-radius: 5px; background: #fff; color: var(--text); font: inherit; }
+.oak-jobs-scroll { flex: 1; min-height: 140px; }
+.oak-jobs-table { min-width: 820px; }
+.oak-jobs-table td { white-space: normal; vertical-align: top; overflow-wrap: anywhere; line-height: 1.6; }
+.oak-jobs-table td:first-child { width: 24%; }
+.oak-jobs-table small, .oak-job-picker small, .oak-settlement-ledger small, .oak-settlement-snapshot small, .oak-settlement-payment-table small { display: block; color: var(--muted); font-size: 11px; margin: 5px 0; }
+.oak-jobs-table summary { cursor: pointer; color: #1d4ed8; font-size: 12px; }
+.oak-job-leg-list { margin: 10px 0 0; padding-left: 18px; min-width: 190px; }
+.oak-job-leg-list li { padding: 7px 0; border-top: 1px solid var(--line); font-size: 11px; }
+.oak-job-leg-list b { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; font-weight: 500; }
+.oak-job-form { display: flex; flex-direction: column; min-height: 0; }
+.oak-job-picker { min-height: 100px; max-height: 43dvh; flex: 1; }
+.oak-job-picker table { min-width: 760px; }
+.oak-job-picker td { white-space: normal; font-size: 12px; line-height: 1.6; }
+.oak-job-picker input[type="checkbox"], .oak-job-confirm-fields input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--blue); }
+.oak-job-confirm-fields { display: grid; gap: 12px; padding: 14px 18px; flex: 0 0 auto; border-top: 1px solid var(--line); }
+.oak-job-confirm-fields .field { display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.oak-job-confirm-fields .field input { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; font: inherit; color: var(--text); }
+.oak-job-form > .error { margin: 10px 16px; flex: 0 0 auto; }
+.oak-weekly-workspace { display: flex; flex-direction: column; gap: 14px; flex: 1; min-height: 0; }
+.oak-settlement-week { display: grid; gap: 6px; width: min(220px, 100%); color: var(--muted); font-size: 12px; }
+.oak-settlement-ledger { min-height: 200px; flex: 1; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.oak-settlement-ledger table { min-width: 900px; }
+.oak-settlement-ledger.is-empty table, .oak-jobs-scroll.is-empty table { min-width: 0; }
+.oak-settlement-ledger.is-empty thead, .oak-jobs-scroll.is-empty thead { display: none; }
+.oak-settlement-ledger td { white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
+.oak-settlement-adjustment-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; font-size: 12px; }
+.oak-settlement-adjustment { display: grid; grid-template-columns: 80px minmax(100px,1fr) 135px 32px; align-items: center; gap: 8px; }
+.oak-settlement-total { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; padding: 14px 0 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.oak-settlement-total strong { color: #0f766e; font-size: 18px; }
+.oak-settlement-detail-scroll { overflow: auto; min-height: 0; padding: 18px; }
+.oak-settlement-detail-scroll > .error { margin-bottom: 12px; }
+.oak-settlement-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-bottom: 1px solid var(--line); }
+.oak-settlement-metrics > div { display: grid; gap: 7px; padding: 16px 12px; border-right: 1px solid var(--line); }
+.oak-settlement-metrics > div:last-child { border-right: 0; }
+.oak-settlement-metrics span { color: var(--muted); font-size: 11px; }
+.oak-settlement-metrics strong { color: #0f766e; font-size: 18px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.oak-settlement-breakdown { display: grid; gap: 12px; font-size: 12px; margin: 18px 0; }
+.oak-settlement-breakdown > div { display: grid; grid-template-columns: minmax(100px,.5fr) minmax(0,1fr); gap: 14px; }
+.oak-settlement-breakdown dt { color: var(--muted); }
+.oak-settlement-breakdown dd { margin: 0; overflow-wrap: anywhere; }
+.oak-settlement-section-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; padding: 16px 0 10px; border-top: 1px solid var(--line); }
+.oak-settlement-section-head h3 { margin: 0; font-size: 13px; }
+.oak-settlement-section-head > span { color: var(--muted); font-size: 11px; }
+.oak-settlement-payment-form { display: grid; gap: 12px; padding: 14px 0; }
+.oak-settlement-payment-form .field { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.oak-settlement-payment-form input, .oak-settlement-payment-form textarea { width: 100%; min-width: 0; border: 1px solid var(--line); border-radius: 5px; padding: 8px 10px; color: var(--text); font: inherit; background: #fff; }
+.oak-settlement-payment-form .oak-income-row-actions { justify-content: flex-end; }
+.oak-settlement-payment-table { min-width: 640px; }
+.oak-settlement-snapshot { max-height: 340px; }
+.oak-settlement-snapshot table { min-width: 800px; }
+.oak-settlement-payment-table td, .oak-settlement-snapshot td { white-space: normal; overflow-wrap: anywhere; line-height: 1.6; font-size: 12px; }
+.oak-settlement-audit { padding: 16px 0; font-size: 12px; color: #475569; }
+.oak-settlement-audit summary { cursor: pointer; }
+.oak-settlement-audit > div { display: grid; grid-template-columns: 1fr auto; gap: 6px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.oak-settlement-audit span { color: var(--muted); font-size: 11px; }
+.oak-settlement-audit small { grid-column: 1/-1; overflow-wrap: anywhere; color: var(--muted); font-size: 10px; line-height: 1.6; }
+@media (max-width: 680px) {
+  .oak-income-tabs { gap: 8px 18px; flex-wrap: wrap; }
+  .oak-income-tabs > button { min-height: 36px; padding: 8px 0; }
+  .oak-settlement-adjustment { grid-template-columns: 80px minmax(0,1fr) 32px; }
+  .oak-settlement-adjustment input[type="number"] { grid-column: 2; grid-row: 2; }
+  .oak-settlement-adjustment .icon-button { grid-column: 3; grid-row: 1/3; }
+  .oak-settlement-detail-scroll { padding: 12px; }
+  .oak-settlement-metrics > div { padding: 12px 6px; }
+  .oak-settlement-metrics strong { font-size: 15px; }
+  .oak-job-controls { flex-wrap: wrap; padding: 10px 12px; }
+  .oak-job-confirm-fields { padding: 12px; }
+  .oak-workflow-context { padding: 12px; }
+  .oak-settlement-audit > div { grid-template-columns: 1fr; }
 }
 
 .top-actions {

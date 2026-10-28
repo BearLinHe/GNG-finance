@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import ExcelJS from "exceljs";
 import type { DriverTask, DriverWorkbookPreview } from "./oak-driver-types";
 import { resolveDriverBatchPeriod } from "./oak-driver-batch";
+import { payeeIdentity } from "./oak-payee";
 
 export const MAX_DRIVER_WORKBOOK_BYTES = 4 * 1024 * 1024;
 
@@ -129,6 +130,7 @@ export async function parseDriverWorkbook(buffer: Buffer, fileName: string): Pro
             if (!knownColumns.has(c) && typeof value === "string" && value.trim() && !/^#/.test(value)) notes.push(value.trim());
           }
           sheetTasks.push({ sheetName: sheet.name, section, sourceRow: r, driverName: sheet.name.trim(), workDate: currentDate,
+            payeeType: payeeIdentity(sheet.name).type,
             reference: reference || null, nature: nature || null, fromLocation: fromLocation || null, toLocation: toLocation || null,
             miles, notes: notes.length ? notes.join("；") : null, rawCells });
         }
@@ -138,6 +140,7 @@ export async function parseDriverWorkbook(buffer: Buffer, fileName: string): Pro
     if (!recognized) { preview.skippedSheets.push({ sheetName: sheet.name, reason: "未找到日期、Nature、From、To 作业表头" }); continue; }
     const dates = sheetTasks.map(task => task.workDate).sort();
     preview.sheets.push({ sheetName: sheet.name, driverName: sheet.name.trim(), selected: sheetTasks.length > 0,
+      payeeType: payeeIdentity(sheet.name).type,
       taskCount: sheetTasks.length, dateFrom: dates[0] || null, dateTo: dates.at(-1) || null, warnings: [...warnings] });
     preview.tasks.push(...sheetTasks);
   }
