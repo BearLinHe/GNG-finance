@@ -90,6 +90,7 @@ function PeriodDetails({ selection, onClose, onIncomeSaved }: { selection: Perio
   const [locationAttempt, setLocationAttempt] = useState(0);
   const scroll = useRef<HTMLDivElement>(null);
   const dialog = useRef<HTMLElement>(null);
+  const previousDate = useRef(activeDate);
   const { period, batchPeriod } = selection;
   const days = useMemo(() => activeDate ? period.days.filter(day => day.workDate === activeDate) : period.days, [activeDate, period.days]);
   const visibleTasks = days.reduce((sum, day) => sum + day.taskCount, 0);
@@ -110,10 +111,21 @@ function PeriodDetails({ selection, onClose, onIncomeSaved }: { selection: Perio
       .finally(() => window.clearTimeout(timeout));
     return () => { disposed = true; controller.abort(); window.clearTimeout(timeout); };
   }, [period, locationAttempt]);
-  useEffect(() => { scroll.current?.scrollTo({ top: 0, left: 0 }); }, [activeDate]);
+  useEffect(() => {
+    scroll.current?.scrollTo({ top: 0, left: 0 });
+    const drawer = dialog.current;
+    const layout = drawer?.querySelector<HTMLElement>(".oak-detail-layout");
+    if (previousDate.current !== activeDate && drawer && layout && getComputedStyle(drawer).display === "block") {
+      const bar = drawer.querySelector<HTMLElement>(".oak-short-detail-bar");
+      const top = layout.getBoundingClientRect().top - drawer.getBoundingClientRect().top + drawer.scrollTop - drawer.clientTop - (bar?.clientHeight || 0);
+      drawer.scrollTo({ top, left: 0 });
+    }
+    previousDate.current = activeDate;
+  }, [activeDate]);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
-    dialog.current?.querySelector<HTMLButtonElement>(".oak-detail-close")?.focus();
+    Array.from(dialog.current?.querySelectorAll<HTMLButtonElement>(".oak-detail-close, .oak-short-detail-close") || [])
+      .find(button => button.getClientRects().length)?.focus();
     const trapFocus = (event: KeyboardEvent) => {
       if (event.key !== "Tab" || dialog.current?.querySelector("[data-income-dialog]")) return;
       const controls = Array.from(dialog.current?.querySelectorAll<HTMLElement>("button:not(:disabled), select, a[href], input:not(:disabled), [tabindex='0']") || []).filter(element => element.getClientRects().length);
@@ -126,6 +138,7 @@ function PeriodDetails({ selection, onClose, onIncomeSaved }: { selection: Perio
   }, []);
   return <div className="oak-task-backdrop" onMouseDown={onClose}>
     <section ref={dialog} className="oak-task-drawer" role="dialog" aria-modal="true" aria-label="周期作业详情" onMouseDown={event => event.stopPropagation()}>
+      <div className="oak-short-detail-bar"><strong>周期作业详情</strong><button className="icon-button oak-short-detail-close" title="关闭周期作业详情" onClick={onClose}><X size={18} /></button></div>
       <header className="oak-detail-header">
         <div className="oak-detail-identity"><span className="oak-subject-icon">{periodIdentity(period) === "司机" ? <UserRound size={22} /> : <Truck size={22} />}</span><div><span className="oak-detail-kicker">{periodIdentity(period)}作业明细</span><h2>{period.driverName}</h2><div className="oak-period-range"><CalendarRange size={14} /><span>统计周期</span><strong>{rangeText(selection.from, selection.to)}</strong></div></div></div>
         <dl className="oak-detail-metrics"><div><dt>作业天数</dt><dd>{period.dayCount}<small>天</small></dd></div><div><dt>作业路段</dt><dd>{period.taskCount}<small>段</small></dd></div><div><dt>记录里程</dt><dd>{number(period.miles)}<small>mi</small></dd></div></dl>
