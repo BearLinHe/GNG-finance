@@ -30,9 +30,10 @@ import {
 import { money } from "@/lib/money";
 import OperatingStandards, { type StandardCategory } from "./operating-standards";
 import OakTransportAccounting from "./oak-transport-accounting";
+import SavContainerAccounting from "./sav-container-accounting";
 
 type TabKey = "initial" | "container" | "fees";
-type AccountingModule = "external" | "oak-transport";
+type AccountingModule = "external" | "oak-transport" | "sav";
 type FeeOrigin = "source" | "legacy" | "system";
 type InitialBillKind = "unload" | "direct_delivery";
 type InitialDateField = "orderDate" | "etaDate" | "pickupDate" | "unloadDate" | "returnDeadline";
@@ -634,6 +635,12 @@ function DataTable<T>({
 export default function Home() {
   const [activeModule, setActiveModule] = useState<AccountingModule>("external");
   const [externalNavExpanded, setExternalNavExpanded] = useState(true);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("module") === "sav") {
+      setActiveModule("sav");
+      setExternalNavExpanded(false);
+    }
+  }, []);
   const [tab, setTab] = useState<TabKey>("initial");
   const [search, setSearch] = useState("");
   const [containerSearch, setContainerSearch] = useState("");
@@ -1034,7 +1041,9 @@ export default function Home() {
   }, [containerProfitSummary]);
 
   const pageTitle =
-    activeModule === "oak-transport"
+    activeModule === "sav"
+      ? "SAV 单柜核算"
+      : activeModule === "oak-transport"
       ? "OAK 运输部核算"
       : tab === "initial"
       ? "源库账单"
@@ -1044,7 +1053,9 @@ export default function Home() {
       ? `${expenseCategoryLabels[standardCategory]}标准`
       : "支出标准";
   const pageSubtitle =
-    activeModule === "oak-transport"
+    activeModule === "sav"
+      ? "查询全部 SAV 订单柜号，按类型、客户及日期筛选，查看账单收入与运输核算依据"
+      : activeModule === "oak-transport"
       ? ""
       : tab === "initial"
       ? "按柜号汇总源系统全部有效账单，包含拆柜、直送、仓储及负数账单"
@@ -1356,13 +1367,13 @@ export default function Home() {
                 setActiveModule("external");
                 if (sidebarCollapsed) setSidebarCollapsed(false);
               }}
-              title="对外单柜核算"
-              aria-label="对外单柜核算"
+              title="OAK 单柜核算"
+              aria-label="OAK 单柜核算"
               aria-expanded={externalNavExpanded && !sidebarCollapsed}
               aria-controls="external-accounting-nav"
             >
               <span className="nav-icon"><Calculator size={18} /></span>
-              <span className="nav-label">对外单柜核算</span>
+              <span className="nav-label">OAK 单柜核算</span>
               <span className="nav-parent-caret">{externalNavExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
             </button>
             {externalNavExpanded ? <div className="nav-module-content" id="external-accounting-nav">
@@ -1466,6 +1477,11 @@ export default function Home() {
               ))}
             </div> : null}
             </div> : null}
+            <button type="button" className={`nav-item nav-module ${activeModule === "sav" ? "active" : ""}`}
+              onClick={() => { setActiveModule("sav"); setExternalNavExpanded(false); setSelectedInitialRow(null); setSelectedContainerProfit(null); }}
+              title="SAV 单柜核算" aria-label="SAV 单柜核算" aria-current={activeModule === "sav" ? "page" : undefined}>
+              <span className="nav-icon"><Calculator size={18} /></span><span className="nav-label">SAV 单柜核算</span>
+            </button>
             <button
               type="button"
               className={`nav-item nav-module ${activeModule === "oak-transport" ? "active" : ""}`}
@@ -1489,7 +1505,7 @@ export default function Home() {
       <div className="content-shell">
         <header className="topbar">
           <div className="topbar-title">
-            {activeModule === "external" ? <><span className="topbar-module">对外单柜核算</span><ChevronRight size={14} aria-hidden="true" /></> : null}
+            {activeModule === "external" ? <><span className="topbar-module">OAK 单柜核算</span><ChevronRight size={14} aria-hidden="true" /></> : null}
             <span>{pageTitle}</span>
           </div>
           <div className="top-actions">
@@ -1508,7 +1524,7 @@ export default function Home() {
           </div>
         </div>
 
-        {activeModule === "oak-transport" ? <OakTransportAccounting /> : <>
+        {activeModule === "sav" ? <SavContainerAccounting /> : activeModule === "oak-transport" ? <OakTransportAccounting /> : <>
         {tab === "fees" ? <OperatingStandards category={standardCategory} /> : null}
 
         {tab === "fees" ? null : tab === "initial" ? (

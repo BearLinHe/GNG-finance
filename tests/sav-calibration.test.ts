@@ -1,0 +1,20 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { savCalibrationPatch } from "../lib/sav-calibration";
+import { defaultSavSettings } from "../lib/sav-settings";
+import type { SavAccountingInput } from "../lib/sav-accounting-types";
+test("Excel evidence fills missing inputs only for identical full-trip membership", () => {
+  const settings = defaultSavSettings();
+  settings.baseline = { importedAt: "", sourceName: "basis.xlsx", containers: [], tripEvidence: [{ id: "T001", goodsIds: ["1", "2"], miles: 100, stopCount: 3, sourceReference: "basis.xlsx/T001" }] };
+  const input: SavAccountingInput = { containers: [], incomeLines: [], trips: [{ id: "live:1", miles: null, stopCount: 2 }], goods: ["1", "2"].map(id => ({ id, containerId: id, tripId: "live:1", method: "私仓", loadedPallets: 1, rejectedPallets: 0, status: "transport" })) };
+  const first = savCalibrationPatch(input, settings);
+  assert.equal(first.appliedCount, 1);
+  assert.equal(first.tripOverrides["live:1"].miles, 100);
+  assert.equal(first.tripOverrides["live:1"].stopCount, undefined);
+  settings.tripOverrides = first.tripOverrides;
+  assert.equal(savCalibrationPatch(input, settings).appliedCount, 0);
+  input.goods.pop();
+  assert.equal(savCalibrationPatch(input, defaultSavSettings()).appliedCount, 0);
+  settings.tripOverrides = {};
+  assert.equal(savCalibrationPatch(input, settings).appliedCount, 0);
+});
