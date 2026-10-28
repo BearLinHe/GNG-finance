@@ -556,6 +556,17 @@ async function ensureSystemSchemaOnce() {
         event varchar(60) not null, details jsonb not null default '{}', created_at timestamptz not null default now()
       )`);
       await client.query("create index if not exists idx_oak_workflow_audit_entity on oak_workflow_audit(entity_kind,entity_id,id)");
+      await client.query(`create table if not exists oak_period_cost_reviews (
+        id bigserial primary key, subject varchar(120) not null, date_from date not null, date_to date not null,
+        import_id bigint not null default 0 check(import_id >= 0),
+        payee_type varchar(20) not null check(payee_type in ('driver','owner')),
+        labor_mode varchar(20) not null check(labor_mode in ('settlements','manual')),
+        labor_amount numeric(12,2) check(labor_amount >= 0), expenses jsonb not null default '[]',
+        note varchar(1000) not null, task_hash varchar(64) not null, task_ids jsonb not null,
+        version integer not null default 1, updated_at timestamptz not null default now(),
+        unique(subject,date_from,date_to,import_id), check(date_from <= date_to),
+        check((labor_mode='manual' and labor_amount is not null) or (labor_mode='settlements' and labor_amount is null))
+      )`);
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");

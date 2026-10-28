@@ -9,7 +9,7 @@ import { csvCell, paymentBalance, settlementSnapshot, settlementTotals, settleme
 export async function settlementPreview(subject: string, weekStart: string) {
   try { workflowDate(weekStart); incomeText(subject, 120, true); } catch (error) { throw new IncomeInputError((error as Error).message); }
   const week = settlementWeek(weekStart);
-  const data = await listDriverActivities({ driverName: subject, dateFrom: week.start, dateTo: week.end, search: "", importId: null, page: 1, pageSize: 100 });
+  const data = await listDriverActivities({ driverName: subject, dateFrom: week.start, dateTo: week.end, search: "", importId: null, page: 1, pageSize: 100, includeProfit: false });
   try {
     const snapshot = settlementSnapshot(subject, week.start, data.periods.flatMap(period => period.days.flatMap(day => day.tasks)));
     return { snapshot, sourceHash: createHash("sha256").update(JSON.stringify(snapshot)).digest("hex") };

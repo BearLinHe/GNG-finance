@@ -1752,6 +1752,70 @@ button {
   .oak-settlement-audit > div { grid-template-columns: 1fr; }
 }
 
+.oak-profit-table { min-width: 1080px; }
+.oak-profit-table th:nth-child(1) { width: 210px; }
+.oak-profit-table th:nth-child(3), .oak-profit-table th:nth-child(4) { width: 135px; }
+.oak-profit-table th:nth-child(5) { width: 120px; }
+.oak-profit-table th:nth-child(6) { width: 190px; }
+.oak-profit-table th:nth-child(7) { width: 92px; }
+.oak-profit-table td { padding: 15px 12px; }
+.oak-profit-table tbody tr:hover { background: #f8fafc; }
+.oak-profit-table tbody tr:hover td { background: transparent; }
+.oak-profit-work summary { cursor: pointer; color: #475569; font-size: 12px; line-height: 1.7; }
+.oak-profit-work .oak-work-counts { margin-top: 12px; grid-template-columns: minmax(0, 1fr); gap: 8px; }
+.oak-profit-result { display: grid; gap: 5px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.oak-profit-result > strong { font-size: 15px; }
+.oak-profit-result > span { font-size: 11px; font-weight: 600; }
+.oak-profit-result > small { color: #92400e; font-size: 10px; font-weight: 400; line-height: 1.6; }
+.oak-profit-result.profit, .oak-profit-overview .profit { color: #047857; }
+.oak-profit-result.loss, .oak-profit-overview .loss, .oak-settlement-total strong.loss { color: #b91c1c; }
+.oak-profit-result.even { color: #475569; }
+.oak-profit-result.pending, .oak-profit-overview .pending, .oak-profit-labor .pending { color: #92400e; }
+.oak-profit-cost strong { color: #334155; font-size: 13px; font-weight: 600; }
+.oak-profit-cost small { display: block; margin-top: 6px; color: var(--muted); font-size: 10px; }
+.oak-profit-overview { display: grid; grid-template-columns: 1.7fr 1fr 1fr 1.2fr; flex: 0 0 auto; background: #fff; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.oak-profit-overview > div { display: grid; gap: 7px; padding: 14px 16px; border-right: 1px solid var(--line); }
+.oak-profit-overview > div:last-child { border-right: 0; }
+.oak-profit-overview span, .oak-profit-overview small { color: var(--muted); font-size: 11px; font-weight: 400; }
+.oak-profit-overview strong { color: #17212f; font-size: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.oak-profit-overview strong small { margin: 0 6px; }
+.oak-profit-overview b { font-size: inherit; }
+.oak-detail-profit { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); flex: 0 0 auto; border-bottom: 1px solid var(--line); background: #f8fafc; }
+.oak-detail-profit > div { display: grid; align-content: start; gap: 7px; padding: 12px 20px; }
+.oak-detail-profit > div > span { color: var(--muted); font-size: 11px; }
+.oak-detail-profit > div > strong { color: #334155; font-size: 14px; font-variant-numeric: tabular-nums; }
+.oak-profit-expense { display: grid; grid-template-columns: minmax(0,1fr) 150px 32px; gap: 8px; }
+.oak-profit-expense input { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 5px; font: inherit; }
+.oak-profit-confirm { display: flex; gap: 9px; align-items: flex-start; color: #475569; font-size: 12px; line-height: 1.7; }
+.oak-profit-confirm input { flex: 0 0 auto; width: 16px; height: 16px; margin-top: 2px; accent-color: var(--blue); }
+.oak-profit-labor { display: grid; gap: 7px; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 12px; }
+.oak-profit-labor > span:first-child { display: flex; align-items: center; gap: 6px; color: #475569; }
+.oak-profit-labor strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+.oak-profit-labor small { color: var(--muted); font-size: 11px; }
+@media (max-width: 1100px) {
+  .oak-profit-table { min-width: 0; }
+  .oak-profit-table tr { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .oak-profit-table .oak-period-subject { grid-column: 1; }
+  .oak-profit-table .oak-period-open { grid-column: 2; }
+  .oak-profit-table td[data-label] { grid-row: auto; }
+  .oak-profit-table td { padding: 0; }
+  .oak-profit-table .oak-period-income { grid-column: auto; grid-row: auto; padding-top: 0; border-top: 0; }
+  .oak-profit-table .oak-period-income .oak-income-total { grid-template-columns: minmax(0,1fr); }
+  .oak-profit-table .oak-period-income .oak-income-total > span { grid-column: auto; grid-row: auto; }
+  .oak-profit-table .oak-profit-result { text-align: left; }
+}
+@media (max-width: 680px) {
+  .oak-profit-overview { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .oak-profit-overview > div { padding: 12px; }
+  .oak-profit-overview > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .oak-profit-overview > div:nth-child(2) { border-right: 0; }
+  .oak-profit-overview strong { font-size: 18px; }
+  .oak-detail-profit { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .oak-detail-profit > div { padding: 10px 14px; }
+  .oak-detail-profit .oak-profit-result > small { display: none; }
+  .oak-profit-expense { grid-template-columns: minmax(0,1fr) 90px 28px; gap: 6px; }
+}
+
 .top-actions {
   display: flex;
   align-items: center;

@@ -10,6 +10,8 @@ import { incomeMoney, IncomeReviewDialog, IncomeTotal, OakIncomeRules } from "./
 import OakTransportJobs from "./oak-transport-jobs";
 import OakWeeklySettlements from "./oak-weekly-settlements";
 import { payeeIdentity, summarizePayeeTypes, type PayeeType } from "@/lib/oak-payee";
+import { PeriodCostDialog, ProfitOverview, ProfitResult } from "./oak-period-profit";
+import type { PeriodProfit } from "@/lib/oak-period-profit";
 
 const DriverRouteMap = dynamic(() => import("./oak-driver-route-map"), { ssr: false, loading: () => <div className="oak-map-loading" role="status">正在准备地图...</div> });
 const locationCache: DriverLocations = {};
@@ -38,20 +40,22 @@ function periodIdentity(period: DriverPeriod) {
   return identity.conflict ? "身份待核对" : payeeIdentity(period.driverName, period.driverName, identity.type).label;
 }
 
-function PeriodsTable({ periods, onSelect, emptyText, busy = false }: {
-  periods: DriverPeriod[]; onSelect: (period: DriverPeriod) => void; emptyText: string; busy?: boolean;
+function PeriodsTable({ periods, onSelect, onCost, emptyText, busy = false }: {
+  periods: DriverPeriod[]; onSelect: (period: DriverPeriod) => void; onCost?: (profit: PeriodProfit) => void; emptyText: string; busy?: boolean;
 }) {
-  return <table className="oak-periods-table" aria-label="司机周期作业汇总" aria-busy={busy}>
-    <thead><tr><th>司机 / 车主 / 车辆</th><th>期间作业</th><th className="oak-numeric">作业天数</th><th className="oak-numeric">作业路段</th><th className="oak-numeric">里程 / mi</th><th className="oak-numeric">已计价作业收入</th><th aria-label="周期详情" /></tr></thead>
+  return <table className={`oak-periods-table${onCost ? " oak-profit-table" : ""}`} aria-label={onCost ? "车辆周期盈亏分析" : "司机周期作业汇总"} aria-busy={busy}>
+    <thead><tr><th>司机 / 车主 / 车辆</th><th>期间作业</th>{onCost ? <><th className="oak-numeric">作业收入 / USD</th><th className="oak-numeric">工资 / 车主价格</th><th className="oak-numeric">车辆费用</th><th className="oak-numeric">周期盈亏</th></> : <><th className="oak-numeric">作业天数</th><th className="oak-numeric">作业路段</th><th className="oak-numeric">里程 / mi</th><th className="oak-numeric">已计价作业收入</th></>}<th aria-label="周期详情及成本核对" /></tr></thead>
     <tbody>
       {periods.map(period => <tr key={period.driverName}>
         <td className="oak-period-subject"><div className="oak-subject-identity"><span className="oak-subject-icon">{periodIdentity(period) === "司机" ? <UserRound size={17} /> : <Truck size={17} />}</span><div><button className="oak-driver-name" disabled={busy} onClick={() => onSelect(period)}>{period.driverName}</button><span className={`oak-payee-tag${periodIdentity(period) === "车主" ? " owner" : ""}`}>{periodIdentity(period)}</span><span className="oak-subject-dates" title={`实际作业日期：${rangeText(period.dateFrom, period.dateTo)}`}>{shortDate(period.dateFrom)} 至 {shortDate(period.dateTo)}</span></div></div></td>
-        <td className="oak-period-work"><TaskCounts period={period} /></td>
-        <td className="oak-numeric" data-label="作业天数">{period.dayCount}</td>
-        <td className="oak-numeric" data-label="作业路段">{period.taskCount}</td>
-        <td className="oak-numeric" data-label="里程 / mi">{number(period.miles)}</td>
-        <td className="oak-numeric oak-period-income" data-label="已计价作业收入"><IncomeTotal value={period.revenue} /></td>
-        <td className="oak-period-open"><button className="icon-button" title={`查看 ${period.driverName} 周期作业`} onClick={() => onSelect(period)} disabled={busy}><ChevronRight size={16} /></button></td>
+        <td className="oak-period-work">{onCost ? <details className="oak-profit-work"><summary>{period.dayCount} 天 · {period.taskCount} 段 · {number(period.miles)} mi</summary><TaskCounts period={period} /></details> : <TaskCounts period={period} />}</td>
+        {onCost ? <>
+          <td className="oak-numeric oak-period-income" data-label="作业收入"><IncomeTotal value={period.revenue} /></td>
+          <td className="oak-numeric oak-profit-cost" data-label="工资 / 车主价格"><strong>{period.profit?.laborAmount != null ? incomeMoney(period.profit.laborAmount) : "—"}</strong><small>{period.profit?.laborAmount != null ? period.profit.payeeType === "owner" ? "车主价格" : "司机工资" : "待核对"}</small></td>
+          <td className="oak-numeric oak-profit-cost" data-label="车辆费用"><strong>{period.profit?.otherAmount != null ? incomeMoney(period.profit.otherAmount) : "—"}</strong><small>{period.profit?.otherAmount != null ? "已核对" : "待核对"}</small></td>
+          <td className="oak-numeric" data-label="周期盈亏"><ProfitResult profit={period.profit} /></td>
+        </> : <><td className="oak-numeric" data-label="作业天数">{period.dayCount}</td><td className="oak-numeric" data-label="作业路段">{period.taskCount}</td><td className="oak-numeric" data-label="里程 / mi">{number(period.miles)}</td><td className="oak-numeric oak-period-income" data-label="已计价作业收入"><IncomeTotal value={period.revenue} /></td></>}
+        <td className="oak-period-open"><div className="oak-income-row-actions">{onCost ? <button className="icon-button" title={`核对 ${period.driverName} 周期成本`} onClick={() => period.profit && onCost(period.profit)} disabled={busy || !period.profit}><Pencil size={15} /></button> : null}<button className="icon-button oak-open-activities" title={`查看 ${period.driverName} 周期作业`} onClick={() => onSelect(period)} disabled={busy}><ChevronRight size={16} /></button></div></td>
       </tr>)}
       {!periods.length ? <tr className="oak-empty-row"><td colSpan={7} className="oak-empty-cell"><FileSpreadsheet size={28} /><span>{emptyText}</span></td></tr> : null}
     </tbody>
@@ -127,6 +131,7 @@ function PeriodDetails({ selection, onClose, onIncomeSaved }: { selection: Perio
         <dl className="oak-detail-metrics"><div><dt>作业天数</dt><dd>{period.dayCount}<small>天</small></dd></div><div><dt>作业路段</dt><dd>{period.taskCount}<small>段</small></dd></div><div><dt>记录里程</dt><dd>{number(period.miles)}<small>mi</small></dd></div></dl>
         <button className="icon-button oak-detail-close" title="关闭作业详情" onClick={onClose}><X size={18} /></button>
       </header>
+      {period.profit ? <div className="oak-detail-profit"><div><span>已计价作业收入</span><strong>{period.profit.income.pricedCount || period.profit.income.includedCount ? incomeMoney(period.profit.income.amount) : "待计价"}</strong></div><div><span>{period.profit.payeeType === "owner" ? "车主价格" : "司机工资"}</span><strong>{period.profit.laborAmount == null ? "待核对" : incomeMoney(period.profit.laborAmount)}</strong></div><div><span>车辆费用</span><strong>{period.profit.otherAmount == null ? "待核对" : incomeMoney(period.profit.otherAmount)}</strong></div><div><span>周期盈亏</span><ProfitResult profit={period.profit} /></div></div> : null}
       <div className="oak-detail-layout">
         <aside className="oak-date-rail"><div className="oak-date-rail-title">作业日期<span>{period.dayCount} 天</span></div>
           <nav className="oak-day-nav" aria-label="作业日期"><button aria-pressed={!activeDate} className={!activeDate ? "active" : ""} onClick={() => setActiveDate("")}><span className="oak-date-name">{view === "map" ? "全部日期总览" : "全部日期"}</span><span className="oak-date-meta">{period.dayCount} 天 · {period.taskCount} 段作业</span></button>{period.days.map(day => <button key={day.workDate} aria-pressed={activeDate === day.workDate} className={activeDate === day.workDate ? "active" : ""} onClick={() => setActiveDate(day.workDate)}><span className="oak-date-name">{shortDate(day.workDate)}<small>{weekday(day.workDate)}</small></span><span className="oak-date-meta">{day.taskCount} 段作业 · {number(day.miles)} mi</span>{batchPeriod && (day.workDate < batchPeriod.from || day.workDate > batchPeriod.to) ? <em>批次外</em> : null}</button>)}</nav>
@@ -165,6 +170,7 @@ export default function OakTransportAccounting() {
   const [previewTab, setPreviewTab] = useState<"sheets" | "periods">("sheets");
   const [mappings, setMappings] = useState<Record<string, { selected: boolean; driverName: string; payeeType: PayeeType | null }>>({});
   const [selectedPeriod, setSelectedPeriod] = useState<PeriodSelection | null>(null);
+  const [costPeriod, setCostPeriod] = useState<PeriodProfit | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadFile = useRef<File | null>(null);
   const requestSequence = useRef(0);
@@ -180,6 +186,7 @@ export default function OakTransportAccounting() {
       const next = await readJson<DriverActivitiesResponse>(await fetch(`/api/oak-driver-activities?${params}`, { cache: "no-store" }));
       if (sequence === requestSequence.current) {
         setData(next);
+        if (next.page !== page) setPage(next.page);
         setSelectedPeriod(current => {
           const updated = current && next.periods.find(period => period.driverName === current.period.driverName);
           return current && updated ? { ...current, period: updated } : current;
@@ -230,10 +237,13 @@ export default function OakTransportAccounting() {
   const selectedBatch = data.imports.find(item => String(item.id) === importId);
   const scopeFrom = dateFrom || data.dateRange.from;
   const scopeTo = dateTo || data.dateRange.to;
-  const totalPages = Math.max(1, Math.ceil(data.totalCount / pageSize));
+  const totalPages = Math.max(1, Math.ceil(data.totalCount / data.pageSize));
+  const displayPage = Math.min(data.page, totalPages);
+  const firstRecord = data.totalCount ? (data.page - 1) * data.pageSize + 1 : 0;
+  const lastRecord = data.totalCount ? firstRecord + data.periods.length - 1 : 0;
 
   function selectBatch(value: string) {
-    setImportId(value); setPage(1);
+    setLoading(true); setImportId(value); setPage(1);
     const batch = data.imports.find(item => String(item.id) === value);
     if (batch) { setDateFrom(batch.dateFrom); setDateTo(batch.dateTo); }
   }
@@ -279,14 +289,14 @@ export default function OakTransportAccounting() {
 
   return (
     <section className="oak-driver-workspace" aria-label="OAK 运输部司机周期作业">
-      <div className="oak-income-tabs" role="tablist" aria-label="运输部核算视图"><button role="tab" aria-selected={workspaceView === "activities"} className={workspaceView === "activities" ? "active" : ""} onClick={() => setWorkspaceView("activities")}><List size={16} />作业收入</button><button role="tab" aria-selected={workspaceView === "jobs"} className={workspaceView === "jobs" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("jobs"); }}><Layers3 size={16} />运输任务</button><button role="tab" aria-selected={workspaceView === "settlements"} className={workspaceView === "settlements" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("settlements"); }}><Wallet size={16} />周结算</button><button role="tab" aria-selected={workspaceView === "rules"} className={workspaceView === "rules" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("rules"); }}><Banknote size={16} />收入计价标准</button></div>
+      <div className="oak-income-tabs" role="tablist" aria-label="运输部核算视图"><button role="tab" aria-selected={workspaceView === "activities"} className={workspaceView === "activities" ? "active" : ""} onClick={() => setWorkspaceView("activities")}><List size={16} />周期盈亏</button><button role="tab" aria-selected={workspaceView === "jobs"} className={workspaceView === "jobs" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("jobs"); }}><Layers3 size={16} />运输任务</button><button role="tab" aria-selected={workspaceView === "settlements"} className={workspaceView === "settlements" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("settlements"); }}><Wallet size={16} />周结算</button><button role="tab" aria-selected={workspaceView === "rules"} className={workspaceView === "rules" ? "active" : ""} onClick={() => { setSelectedPeriod(null); setWorkspaceView("rules"); }}><Banknote size={16} />收入计价标准</button></div>
       {workspaceView === "rules" ? <OakIncomeRules onChange={() => setReload(value => value + 1)} /> : null}
       {workspaceView === "settlements" ? <OakWeeklySettlements initialDate={dateFrom || selectedBatch?.dateFrom || ""} drivers={data.drivers} subjects={data.subjects} /> : null}
       <div className="oak-income-activities" hidden={workspaceView !== "activities" && workspaceView !== "jobs"}>
       <div className="oak-driver-actions">
-        <div><h2>{workspaceView === "jobs" ? "运输任务归集" : "司机 / 车主周期作业"}</h2>{selectedBatch ? <span className="muted">{selectedBatch.fileName}</span> : null}</div>
+        <div><h2>{workspaceView === "jobs" ? "运输任务归集" : "车辆周期盈亏"}</h2>{selectedBatch ? <span className="muted">{selectedBatch.fileName}</span> : null}</div>
         <div className="oak-command-buttons">
-          <button className="icon-button" title="刷新作业" onClick={() => setReload(value => value + 1)} disabled={loading}><RefreshCw size={16} /></button>
+          <button className="icon-button" title="刷新作业" onClick={() => { setLoading(true); setReload(value => value + 1); }} disabled={loading}><RefreshCw size={16} /></button>
           {selectedBatch ? <button className="icon-button danger-icon" title="删除当前导入批次" onClick={() => void removeImport()}><Trash2 size={16} /></button> : null}
           <button className="button primary" onClick={() => fileInput.current?.click()} disabled={uploading}><Upload size={16} />{uploading ? "正在识别..." : "上传 Excel"}</button>
           <input ref={fileInput} type="file" accept=".xlsx" aria-label="上传作业 Excel" hidden onChange={event => { const file = event.target.files?.[0]; if (file) void previewFile(file); event.target.value = ""; }} />
@@ -303,14 +313,14 @@ export default function OakTransportAccounting() {
       {error ? <div className="error" role="alert">{error}</div> : null}
       {message ? <div className="oak-success" role="status"><Check size={16} />{message}</div> : null}
       {selectedBatch?.hasOutOfPeriodRecords ? <div className="oak-batch-notice"><TriangleAlert size={15} /><span>文件含批次外日期的作业，原始日期已保留。</span><button onClick={() => { const normal = dateFrom === selectedBatch.dateFrom && dateTo === selectedBatch.dateTo; setDateFrom(normal ? selectedBatch.recordDateFrom : selectedBatch.dateFrom); setDateTo(normal ? selectedBatch.recordDateTo : selectedBatch.dateTo); setPage(1); }}>{dateFrom === selectedBatch.dateFrom && dateTo === selectedBatch.dateTo ? "查看全部日期" : "恢复批次周期"}</button></div> : null}
-      <div className="oak-income-strip" aria-label="作业收入汇总" aria-busy={loading}><div><span>已计价作业收入 / USD</span><strong>{data.summary.revenue?.pricedCount ? incomeMoney(data.summary.revenue.amount) : "—"}</strong></div><div><span>已计价作业</span><strong>{data.summary.revenue?.pricedCount || 0}<small>段</small></strong></div><div><span>待计价作业</span><strong className="oak-income-pending">{data.summary.revenue?.pendingCount ?? data.summary.taskCount}<small>段</small></strong></div><div><span>已并入整趟</span><strong>{data.summary.revenue?.includedCount || 0}<small>段</small></strong></div></div>
+      {workspaceView === "activities" ? search.trim() ? <div className="oak-batch-notice">作业搜索中 · 周期盈亏暂停显示</div> : <ProfitOverview summary={data.summary.profit} busy={loading} /> : <div className="oak-income-strip" aria-label="作业收入汇总" aria-busy={loading}><div><span>已计价作业收入 / USD</span><strong>{data.summary.revenue?.pricedCount ? incomeMoney(data.summary.revenue.amount) : "—"}</strong></div><div><span>已计价作业</span><strong>{data.summary.revenue?.pricedCount || 0}<small>段</small></strong></div><div><span>待计价作业</span><strong className="oak-income-pending">{data.summary.revenue?.pendingCount ?? data.summary.taskCount}<small>段</small></strong></div><div><span>已并入整趟</span><strong>{data.summary.revenue?.includedCount || 0}<small>段</small></strong></div></div>}
       <div className="oak-driver-ledger">
-        <div className="oak-ledger-head"><div><h3>司机周期汇总</h3><div className="oak-period-range"><CalendarRange size={14} /><strong>{rangeText(scopeFrom, scopeTo)}</strong>{search.trim() ? <span>匹配：{search.trim()}</span> : null}{loading ? <span className="oak-load-status" role="status">读取中</span> : null}</div></div><dl className="oak-overview-metrics" aria-label="周期汇总"><div><dt>司机 / 车辆</dt><dd>{number(data.summary.driverCount)}<small>个</small></dd></div><div><dt>作业日期</dt><dd>{number(data.summary.dayCount)}<small>天</small></dd></div><div><dt>作业路段</dt><dd>{number(data.summary.taskCount)}<small>段</small></dd></div><div><dt>记录里程</dt><dd>{number(data.summary.miles)}<small>mi</small></dd></div></dl></div>
-        {workspaceView === "jobs" ? <OakTransportJobs tasks={data.periods.flatMap(period => period.days.flatMap(day => day.tasks))} busy={loading} onSaved={async () => { if (!await load()) throw new Error("已保存归集，请刷新作业核对最新结果"); }} /> : <div ref={ledgerScroll} className="table-wrap oak-driver-scroll"><PeriodsTable periods={data.periods} onSelect={period => setSelectedPeriod({ period, from: scopeFrom || period.dateFrom, to: scopeTo || period.dateTo, batchPeriod: selectedBatch ? { from: selectedBatch.dateFrom, to: selectedBatch.dateTo } : undefined })} busy={loading} emptyText={loading ? "正在读取作业..." : data.imports.length ? "没有符合筛选条件的作业" : "暂无作业记录"} /></div>}
+        <div className="oak-ledger-head"><div><h3>{workspaceView === "jobs" ? "周期作业汇总" : "周期盈亏分析"}</h3><div className="oak-period-range"><CalendarRange size={14} /><strong>{rangeText(scopeFrom, scopeTo)}</strong>{search.trim() ? <span>匹配：{search.trim()}</span> : null}{loading ? <span className="oak-load-status" role="status">读取中</span> : null}</div></div><dl className="oak-overview-metrics" aria-label="周期汇总"><div><dt>司机 / 车主 / 车辆</dt><dd>{number(data.summary.driverCount)}<small>个</small></dd></div><div><dt>作业日期</dt><dd>{number(data.summary.dayCount)}<small>天</small></dd></div><div><dt>作业路段</dt><dd>{number(data.summary.taskCount)}<small>段</small></dd></div><div><dt>记录里程</dt><dd>{number(data.summary.miles)}<small>mi</small></dd></div></dl></div>
+        {workspaceView === "jobs" ? <OakTransportJobs tasks={data.periods.flatMap(period => period.days.flatMap(day => day.tasks))} busy={loading} onSaved={async () => { if (!await load()) throw new Error("已保存归集，请刷新作业核对最新结果"); }} /> : <div ref={ledgerScroll} className="table-wrap oak-driver-scroll"><PeriodsTable periods={data.periods} onCost={setCostPeriod} onSelect={period => setSelectedPeriod({ period, from: scopeFrom || period.dateFrom, to: scopeTo || period.dateTo, batchPeriod: selectedBatch ? { from: selectedBatch.dateFrom, to: selectedBatch.dateTo } : undefined })} busy={loading} emptyText={loading ? "正在读取作业..." : data.imports.length ? "没有符合筛选条件的作业" : "暂无作业记录"} /></div>}
         <div className="pagination">
-          <span className="pagination-info">共 {data.totalCount} 个</span>
-          <select className="page-size" aria-label="作业每页条数" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50 / 页</option><option value={100}>100 / 页</option><option value={300}>300 / 页</option></select>
-          <button className="button ghost" disabled={loading || page <= 1} onClick={() => setPage(value => value - 1)}>上一页</button><span className="page-current">{page} / {totalPages}</span><button className="button ghost" disabled={loading || page >= totalPages} onClick={() => setPage(value => value + 1)}>下一页</button>
+          <span className="pagination-info">显示 {firstRecord}-{lastRecord} / {data.totalCount} 个</span>
+          <select className="page-size" aria-label="作业每页条数" value={pageSize} onChange={e => { setLoading(true); setPageSize(Number(e.target.value)); setPage(1); }}><option value={50}>50 / 页</option><option value={100}>100 / 页</option><option value={300}>300 / 页</option></select>
+          <button className="button ghost" disabled={loading || displayPage <= 1} onClick={() => { setLoading(true); setPage(displayPage - 1); }}>上一页</button><span className="page-current" aria-live="polite">{displayPage} / {totalPages}</span><button className="button ghost" disabled={loading || displayPage >= totalPages} onClick={() => { setLoading(true); setPage(displayPage + 1); }}>下一页</button>
         </div>
       </div>
       </div>
@@ -341,6 +351,7 @@ export default function OakTransportAccounting() {
       </div> : null}
 
       {selectedPeriod ? <PeriodDetails key={`${selectedPeriod.period.driverName}:${selectedPeriod.from}:${selectedPeriod.to}`} selection={selectedPeriod} onClose={() => setSelectedPeriod(null)} onIncomeSaved={async () => { if (!await load()) throw new Error("已保存，但读取最新收入失败，请刷新后核对"); }} /> : null}
+      {costPeriod ? <PeriodCostDialog profit={costPeriod} onClose={() => setCostPeriod(null)} onSaved={async () => { if (!await load()) throw new Error("读取最新盈亏失败，请刷新核对"); }} /> : null}
     </section>
   );
 }

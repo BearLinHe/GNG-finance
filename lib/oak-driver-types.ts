@@ -1,5 +1,6 @@
 import { emptyIncomeSummary, type IncomeSummary, type TaskIncome } from "./oak-income";
 import { payeeIdentity, type PayeeType } from "./oak-payee";
+import type { PeriodProfit, ProfitSummary } from "./oak-period-profit";
 
 export type DriverTask = {
   id?: string;
@@ -52,6 +53,7 @@ export type DriverDay = {
 };
 
 export type DriverPeriod = {
+  profit?: PeriodProfit;
   revenue?: IncomeSummary;
   driverName: string;
   dateFrom: string;
@@ -83,7 +85,7 @@ export type DriverActivitiesResponse = {
   totalCount: number;
   page: number;
   pageSize: number;
-  summary: { driverCount: number; dayCount: number; taskCount: number; miles: number | null; revenue?: IncomeSummary };
+  summary: { driverCount: number; dayCount: number; taskCount: number; miles: number | null; revenue?: IncomeSummary; profit?: ProfitSummary };
   drivers: string[];
   imports: DriverImport[];
 };

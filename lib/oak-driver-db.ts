@@ -4,6 +4,9 @@ import { resolveDriverBatchPeriod, type DriverBatchPeriod } from "./oak-driver-b
 import { priceDriverDays, summarizeIncome } from "./oak-income";
 import { readIncomeContext, readIncomeReviews, readIncomeRules } from "./oak-income-db";
 import { summarizePayeeTypes } from "./oak-payee";
+import { pricePeriodProfits } from "./oak-period-profit-db";
+import { summarizePeriodProfits } from "./oak-period-profit";
+import { paginateDriverPeriods } from "./oak-pagination";
 
 export async function saveDriverWorkbook(fileName: string, fileHash: string, tasks: DriverTask[], batchPeriod?: DriverBatchPeriod) {
   if (!tasks.length) throw new Error("请至少选择一个有作业记录的工作表");
@@ -45,7 +48,7 @@ export async function saveDriverWorkbook(fileName: string, fileHash: string, tas
 
 export async function listDriverActivities(params: {
   driverName: string; dateFrom: string; dateTo: string; search: string;
-  importId: number | null; page: number; pageSize: number;
+  importId: number | null; page: number; pageSize: number; includeProfit?: boolean;
 }): Promise<DriverActivitiesResponse> {
   await ensureSystemSchema();
   return withSystemClient(async (client) => {
@@ -113,21 +116,33 @@ export async function listDriverActivities(params: {
     const tasks = ratedDays.flatMap(day => day.tasks);
     const dates = ratedDays.map(day => day.workDate).sort();
     const miles = tasks.map(task => task.miles).filter((value): value is number => value != null);
-    return { ...payload, subjects, imports, periods: periods.slice((params.page - 1) * params.pageSize, params.page * params.pageSize),
-      dateRange: { from: dates[0] || null, to: dates.at(-1) || null }, totalCount: periods.length,
+    const profits = !search && params.includeProfit !== false && dates.length ? await pricePeriodProfits(client, periods,
+      { dateFrom: params.dateFrom || dates[0], dateTo: params.dateTo || dates.at(-1)!, importId: params.importId }) : [];
+    const analyzed = periods.map((period, index) => profits[index] ? { ...period, profit: profits[index] } : period);
+    const pagination = paginateDriverPeriods(analyzed, params.page, params.pageSize);
+    return { ...payload, subjects, imports, ...pagination,
+      dateRange: { from: dates[0] || null, to: dates.at(-1) || null },
       summary: { driverCount: periods.length, dayCount: new Set(dates).size, taskCount: tasks.length,
-        miles: miles.length ? Math.round(miles.reduce((sum, value) => sum + value, 0) * 100) / 100 : null, revenue: summarizeIncome(tasks) },
-      page: params.page, pageSize: params.pageSize };
+        miles: miles.length ? Math.round(miles.reduce((sum, value) => sum + value, 0) * 100) / 100 : null, revenue: summarizeIncome(tasks),
+        profit: !search && params.includeProfit !== false ? summarizePeriodProfits(profits) : undefined },
+    };
   });
 }
 
 export async function deleteDriverImport(id: number) {
   await ensureSystemSchema();
   return withSystemClient(async (client) => {
-    const linked = await client.query(`select s.id from oak_settlement_tasks st join oak_driver_tasks t on t.id=st.task_id
-      join oak_weekly_settlements s on s.id=st.settlement_id where t.import_id=$1 limit 1`, [id]);
-    if (linked.rowCount) throw new Error(`该批次已关联周结算单 #${linked.rows[0].id}，请先处理结算单，不能直接删除`);
-    const result = await client.query("delete from oak_driver_imports where id=$1 returning id", [id]);
-    return result.rowCount === 1;
+    await client.query("begin");
+    try {
+      await client.query("select pg_advisory_xact_lock(19431, 3)");
+      const linked = await client.query(`select s.id from oak_settlement_tasks st join oak_driver_tasks t on t.id=st.task_id
+        join oak_weekly_settlements s on s.id=st.settlement_id where t.import_id=$1 limit 1`, [id]);
+      if (linked.rowCount) throw new Error(`该批次已关联周结算单 #${linked.rows[0].id}，请先处理结算单，不能直接删除`);
+      const costs = await client.query(`select r.id from oak_period_cost_reviews r where r.import_id=$1 or exists(
+        select 1 from oak_driver_tasks t where t.import_id=$1 and r.task_ids ? t.id::text) limit 1`, [id]);
+      if (costs.rowCount) throw new Error("该批次已关联周期成本核对，请先撤销成本核对，不能直接删除");
+      const result = await client.query("delete from oak_driver_imports where id=$1 returning id", [id]);
+      await client.query("commit"); return result.rowCount === 1;
+    } catch (e) { await client.query("rollback"); throw e; }
   });
 }
