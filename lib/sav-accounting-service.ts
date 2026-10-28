@@ -5,6 +5,7 @@ import { reconcileSav } from "./sav-baseline";
 import { SavInputError, type SavSettings } from "./sav-settings";
 import { parseSavQuery, type SavQueryScope } from "./sav-query";
 import type { SavAccountingInput } from "./sav-accounting-types";
+import { SavRuntimeError, savRuntimeClientError, savRuntimeError } from "./sav-runtime-error";
 
 export function applySavSettings(input: SavAccountingInput, settings: SavSettings, scope: SavQueryScope = "excel"): SavAccountingInput {
   const incomeOverrides = scope === "all" ? settings.allIncomeOverrides || {} : settings.incomeOverrides;
@@ -42,7 +43,13 @@ export function applySavSettings(input: SavAccountingInput, settings: SavSetting
 export async function loadSavAccounting(params: URLSearchParams, options: { allRows?: boolean } = {}) {
   const query = parseSavQuery(params);
   const { dateFrom, dateTo, scope, status } = query;
-  const [source, settings] = await Promise.all([getSavSourceAccounting({ ...query, allRows: options.allRows }), readSavSettings()]);
+  const [source, settings] = await Promise.all([
+    getSavSourceAccounting({ ...query, allRows: options.allRows }).catch(error => {
+      if (error instanceof SavSourceInputError) throw error;
+      throw savRuntimeError("source", error);
+    }),
+    readSavSettings().catch(error => { throw savRuntimeError("settings", error); })
+  ]);
   let input = applySavSettings(source.input, settings, scope);
   let result = calculateSavAccounting(input);
   if (status && status !== "all") {
@@ -67,5 +74,8 @@ export async function loadSavAccounting(params: URLSearchParams, options: { allR
   };
 }
 export function savApiError(error: unknown) {
-  return { error: error instanceof SavInputError || error instanceof SavSourceInputError ? error.message : "读取SAV核算失败，请检查SAV与Finance数据库连接及数据结构" };
+  return error instanceof SavInputError || error instanceof SavSourceInputError ? { error: error.message } : savRuntimeClientError(error);
+}
+export function savApiStatus(error: unknown) {
+  return error instanceof SavInputError || error instanceof SavSourceInputError ? 400 : error instanceof SavRuntimeError ? error.status : 500;
 }

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { Pool, type PoolClient } from "pg";
 import type { SavAccountingInput, SavGoodsInput, SavIncomeCategory, SavIncomeLine, SavTripInput } from "./sav-accounting-types";
+import { SavRuntimeError, savRuntimeError } from "./sav-runtime-error";
 
 export type SavSourceFilters = {
   dateFrom?: string; dateTo?: string; search?: string; customer?: string;
@@ -55,7 +56,7 @@ async function connectionString() {
       if (url) return url;
     } catch { /* Missing local configuration is reported without disclosing its contents. */ }
   }
-  throw new Error("尚未配置 SAV 数据源。请设置 SAV_DATABASE_URL，或配置可读取的 CoreFlow SAV 数据源。");
+  throw new SavRuntimeError("SAV_SOURCE_NOT_CONFIGURED", "source");
 }
 
 async function withSavReadonly<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
@@ -74,9 +75,7 @@ async function withSavReadonly<T>(fn: (client: PoolClient) => Promise<T>): Promi
   } catch (error) {
     if (client) await client.query("ROLLBACK").catch(() => undefined);
     if (error instanceof SavSourceInputError) throw error;
-    const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
-    if (code === "57014") throw new Error("SAV 数据读取超时，请缩小提柜日期范围后重试。");
-    throw new Error("无法读取 CoreFlow SAV 数据，请检查 SAV 数据源连接、只读权限及表结构。");
+    throw savRuntimeError("source", error);
   } finally { client?.release(); }
 }
 
