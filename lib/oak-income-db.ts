@@ -14,10 +14,11 @@ export async function readIncomeBody(request: Request) {
   if (text.length > 16000) throw new IncomeInputError("提交内容过长");
   try { return JSON.parse(text); } catch { throw new IncomeInputError("提交内容不是有效 JSON"); }
 }
-export async function readIncomeRules(client: PoolClient): Promise<IncomeRule[]> {
-  const result = await client.query(`select id::int, name, work_label as "workLabel", from_location as "fromLocation", to_location as "toLocation",
+export const incomeRulesQuery = `select id::int, name, work_label as "workLabel", from_location as "fromLocation", to_location as "toLocation",
     amount::float8, billing_basis as "billingBasis", valid_from::text as "validFrom", valid_to::text as "validTo", active
-    from oak_income_rules order by active desc, work_label, id`);
+    from oak_income_rules order by active desc, work_label, id`;
+export async function readIncomeRules(client: PoolClient): Promise<IncomeRule[]> {
+  const result = await client.query(incomeRulesQuery);
   return result.rows;
 }
 export async function readIncomeReviews(client: PoolClient, taskIds: string[]): Promise<IncomeReview[]> {
@@ -47,6 +48,16 @@ export async function readIncomeContext(client: PoolClient, ids: string[], revie
       and not(t.id=any($2::bigint[])) order by t.id`, [missing, ids]);
   const tasks = result.rows.map(taskFromRow);
   return { days: summarizeDriverTasks(tasks), reviews: await readIncomeReviews(client, tasks.map(task => task.id!)) };
+}
+export async function readRatedDriverTasks(client:PoolClient,range:{dateFrom:string;dateTo:string},rules?:IncomeRule[]):Promise<DriverTask[]>{
+  const tasks=(await client.query(`select t.id::text,t.import_id::int as "importId",t.driver_name as "driverName",t.sheet_name as "sheetName",
+    t.work_date::text as "workDate",t.payee_type as "payeeType",t.section,t.source_row as "sourceRow",t.reference,t.nature,
+    t.from_location as "fromLocation",t.to_location as "toLocation",t.miles::float8,t.notes,t.raw_cells as "rawCells",i.file_name as "fileName"
+    from oak_driver_tasks t join oak_driver_imports i on i.id=t.import_id where t.work_date between $1::date and $2::date order by t.work_date,t.id`,[range.dateFrom,range.dateTo])).rows as DriverTask[];
+  const reviews=await readIncomeReviews(client,tasks.map(task=>task.id!));
+  const context=await readIncomeContext(client,tasks.map(task=>task.id!),reviews);
+  const days=summarizeDriverTasks(tasks);
+  return priceDriverDays([...days,...context.days],rules||await readIncomeRules(client),[...reviews,...context.reviews]).slice(0,days.length).flatMap(day=>day.tasks);
 }
 export async function incomeTaskScope(taskId: string) {
   await ensureSystemSchema();

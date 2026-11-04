@@ -6,7 +6,7 @@ import { payeeIdentity } from "./oak-payee";
 
 export const MAX_DRIVER_WORKBOOK_BYTES = 4 * 1024 * 1024;
 
-function cellValue(cell: ExcelJS.Cell): string | number | Date | null {
+export function cellValue(cell: ExcelJS.Cell): string | number | Date | null {
   const value = cell.value;
   if (value == null) return null;
   if (value instanceof Date || typeof value === "string" || typeof value === "number") return value;
@@ -21,12 +21,12 @@ function cellValue(cell: ExcelJS.Cell): string | number | Date | null {
   return null;
 }
 
-function text(cell: ExcelJS.Cell) {
+export function text(cell: ExcelJS.Cell) {
   const value = cellValue(cell);
   return value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? "").trim();
 }
 
-function dateValue(cell: ExcelJS.Cell, year: number | null): string | null {
+export function dateValue(cell: ExcelJS.Cell, year: number | null): string | null {
   const value = cellValue(cell);
   if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString().slice(0, 10);
   if (typeof value !== "string") return null;

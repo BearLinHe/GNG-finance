@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Banknote, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
+import { ArrowRight, Banknote, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
 import { incomeWorkLabel, type IncomeRule, type IncomeSummary } from "@/lib/oak-income";
 import type { DriverDay, DriverTask } from "@/lib/oak-driver-types";
 
@@ -41,7 +41,7 @@ export function IncomeDialog({ title, busy, onClose, children, wide = false }: {
 
 type RuleForm = { id: number | null; name: string; workLabel: string; fromLocation: string; toLocation: string; amount: string; billingBasis: "segment" | "trip"; validFrom: string; validTo: string; active: boolean };
 const newRule = (): RuleForm => ({ id: null, name: "", workLabel: "", fromLocation: "", toLocation: "", amount: "", billingBasis: "segment", validFrom: "", validTo: "", active: true });
-export function OakIncomeRules({ onChange }: { onChange: () => void }) {
+export function OakIncomeRules({ onChange, embedded = false }: { onChange: () => void; embedded?: boolean }) {
   const [data, setData] = useState<{ rules: IncomeRule[]; workLabels: string[] }>({ rules: [], workLabels: [] });
   const [loading, setLoading] = useState(true); const [busy, setBusy] = useState(false);
   const [error, setError] = useState(""); const [formError, setFormError] = useState("");
@@ -62,10 +62,26 @@ export function OakIncomeRules({ onChange }: { onChange: () => void }) {
   }
   const shown = data.rules.filter(rule => [rule.name, rule.workLabel, rule.fromLocation, rule.toLocation].filter(Boolean).join(" ").toLowerCase().includes(search.trim().toLowerCase()));
   return <div className="oak-income-rules">
-    <div className="oak-driver-actions"><div><h2>收入计价标准</h2><span className="muted">USD · 作业收入</span></div><button className="button primary" disabled={loading || busy} onClick={() => edit(newRule())}><Plus size={16} />新增收入标准</button></div>
-    <div className="input-with-icon oak-income-rule-search"><Search size={15} /><input aria-label="搜索收入标准" placeholder="作业名称、起点或终点" value={search} onChange={event => setSearch(event.target.value)} /></div>
+    {!embedded ? <div className="oak-income-rules-heading"><h2>收入计价标准</h2><span>公司作业收入 · USD</span></div> : null}
+    <div className="oak-income-rules-toolbar">
+      <div className="oak-income-rule-search"><Search size={17} /><input aria-label="搜索收入标准" placeholder="搜索作业名称、起点或终点" value={search} onChange={event => setSearch(event.target.value)} />{search ? <button className="icon-button" title="清空收入标准搜索" onClick={() => setSearch("")}><X size={14} /></button> : null}</div>
+      <button className="button primary" disabled={loading || busy} onClick={() => edit(newRule())}><Plus size={16} />新增收入标准</button>
+    </div>
     {error ? <div className="error" role="alert">{error}<button className="button ghost" onClick={() => void load()}>重试</button></div> : null}
-    <div className="oak-income-rule-scroll table-wrap"><table className="oak-income-rules-table" aria-label="收入计价标准" aria-busy={loading}><thead><tr><th>收入项目 / 作业</th><th>适用路线</th><th className="oak-numeric">收入单价 / USD</th><th>计价口径</th><th>生效日期</th><th>状态</th><th>操作</th></tr></thead><tbody>{shown.map(rule => <tr key={rule.id}><td><strong>{rule.name}</strong><small>{rule.workLabel}</small></td><td>{rule.fromLocation || "任意起点"} → {rule.toLocation || "任意终点"}</td><td className="oak-income-amount oak-numeric">{incomeMoney(rule.amount)}</td><td>{rule.billingBasis === "trip" ? "整趟（含回程）" : "单段"}</td><td>{rule.validFrom || "不限开始"}<small>至 {rule.validTo || "不限结束"}</small></td><td><span className={`oak-income-status ${rule.active ? "priced" : "inactive"}`}>{rule.active ? "启用" : "停用"}</span></td><td><div className="oak-income-row-actions"><button className="icon-button" title={`编辑收入标准 ${rule.name}`} disabled={busy} onClick={() => edit({ ...rule, fromLocation: rule.fromLocation || "", toLocation: rule.toLocation || "", amount: String(rule.amount), validFrom: rule.validFrom || "", validTo: rule.validTo || "" })}><Pencil size={15} /></button><button className="icon-button danger-icon" title={`删除收入标准 ${rule.name}`} disabled={busy} onClick={() => void remove(rule)}><Trash2 size={15} /></button></div></td></tr>)}{!shown.length ? <tr><td colSpan={7} className="oak-empty-cell"><Banknote size={28} />{loading ? "正在读取收入标准..." : data.rules.length ? "无匹配收入标准" : "暂无收入计价标准"}</td></tr> : null}</tbody></table></div>
+    <div className="oak-income-rule-scroll table-wrap"><table className="oak-income-rules-table" aria-label="收入计价标准" aria-busy={loading}>
+      <colgroup><col className="oak-rule-col-name" /><col className="oak-rule-col-route" /><col className="oak-rule-col-price" /><col className="oak-rule-col-basis" /><col className="oak-rule-col-dates" /><col className="oak-rule-col-status" /><col className="oak-rule-col-actions" /></colgroup>
+      <thead><tr><th>收入项目 / 作业</th><th>适用路线</th><th className="oak-rule-price-head">收入单价 <small>USD</small></th><th>计价口径</th><th>生效日期</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>{shown.map(rule => <tr key={rule.id} data-rule-id={rule.id} className={rule.active ? "" : "oak-rule-inactive"}>
+        <td><strong className="oak-rule-name">{rule.name}</strong><small>{rule.workLabel}</small></td>
+        <td>{!rule.fromLocation && !rule.toLocation ? <span className="oak-rule-unrestricted">不限路线</span> : <div className="oak-rule-route"><span>{rule.fromLocation || "任意起点"}</span><ArrowRight size={13} /><span>{rule.toLocation || "任意终点"}</span></div>}</td>
+        <td className="oak-rule-price"><strong>{incomeMoney(rule.amount)}</strong><small>/ {rule.billingBasis === "trip" ? "趟" : "段"}</small></td>
+        <td><span className={`oak-rule-basis ${rule.billingBasis}`}>{rule.billingBasis === "trip" ? "整趟" : "单段"}</span>{rule.billingBasis === "trip" ? <small>含回程</small> : null}</td>
+        <td className="oak-rule-dates">{!rule.validFrom && !rule.validTo ? <span className="oak-rule-unrestricted">长期有效</span> : <>{rule.validFrom ? `${rule.validFrom} 起` : "不限开始"}<small>{rule.validTo ? `至 ${rule.validTo}` : "不限结束"}</small></>}</td>
+        <td><span className={`oak-income-status ${rule.active ? "priced" : "inactive"}`}><i aria-hidden="true" />{rule.active ? "启用" : "停用"}</span></td>
+        <td><div className="oak-income-row-actions"><button className="icon-button" title={`编辑收入标准 ${rule.name}`} disabled={busy} onClick={() => edit({ ...rule, fromLocation: rule.fromLocation || "", toLocation: rule.toLocation || "", amount: String(rule.amount), validFrom: rule.validFrom || "", validTo: rule.validTo || "" })}><Pencil size={15} /></button><button className="icon-button danger-icon" title={`删除收入标准 ${rule.name}`} disabled={busy} onClick={() => void remove(rule)}><Trash2 size={15} /></button></div></td>
+      </tr>)}{!shown.length ? <tr><td colSpan={7} className="oak-empty-cell"><Banknote size={28} />{loading ? "正在读取收入标准..." : data.rules.length ? "无匹配收入标准" : "暂无收入计价标准"}</td></tr> : null}</tbody>
+    </table></div>
+    <div className="oak-income-rules-footer" role="status"><span>{loading ? "读取中..." : search.trim() ? `${shown.length} / ${data.rules.length} 项标准` : `共 ${data.rules.length} 项标准`}</span><span>{shown.filter(rule => rule.active).length} 项启用 <b>USD</b></span></div>
     {form ? <IncomeDialog title={form.id ? "编辑收入标准" : "新增收入标准"} busy={busy} onClose={() => setForm(null)}><form className="oak-income-form" onSubmit={event => { event.preventDefault(); void save(); }}>
       <div className="oak-income-fields">
         {formError ? <div className="error" role="alert">{formError}</div> : null}

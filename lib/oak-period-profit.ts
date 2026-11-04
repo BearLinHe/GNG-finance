@@ -38,7 +38,7 @@ export function validateProfitScope(value: Record<string, unknown>): ProfitScope
 export function validatePeriodCost(value: unknown): PeriodCostInput {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("周期成本内容无效");
   const body = value as Record<string, unknown>;
-  if (body.payeeType !== "driver" && body.payeeType !== "owner") throw new Error("请选择司机工资或车主价格");
+  if (body.payeeType !== "driver" && body.payeeType !== "owner") throw new Error("请选择司机工资或车主工资");
   if (body.laborMode !== "settlements" && body.laborMode !== "manual") throw new Error("报酬来源无效");
   if (body.expensesConfirmed !== true) throw new Error("请确认本周期车辆费用已核对完整");
   if (!Array.isArray(body.expenses) || body.expenses.length > 40) throw new Error("车辆费用最多 40 项");
@@ -93,7 +93,7 @@ export function calculatePeriodProfit(scope: ProfitScope, tasks: DriverTask[], s
   if (!tasks.length) issues.push("本周期无作业");
   if (identity.conflict || (identity.type && usableReview && identity.type !== usableReview.payeeType)) issues.push("结算身份待核对");
   if (income.pendingCount) issues.push(`${income.pendingCount} 段收入待计价`);
-  if (laborAmount == null) issues.push(partial ? "周结算与所选周期或作业范围不完整匹配" : "工资／车主价格待核对");
+  if (laborAmount == null) issues.push(partial ? "周结算与所选周期或作业范围不完整匹配" : "工资／车主工资待核对");
   if (otherAmount == null) issues.push(staleReview ? "作业范围已变化，车辆费用需重新核对" : "车辆费用待核对");
   const totalCost = laborAmount != null && otherAmount != null ? (cents(laborAmount) + cents(otherAmount)) / 100 : null;
   const net = !issues.length && totalCost != null ? (cents(income.amount) - cents(totalCost)) / 100 : null;

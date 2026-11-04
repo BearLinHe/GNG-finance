@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     if (importId !== null && (!Number.isSafeInteger(importId) || importId <= 0)) throw new Error("导入批次无效");
     return NextResponse.json(await listDriverActivities({
       driverName: params.get("driverName") || "", dateFrom: params.get("dateFrom") || "", dateTo: params.get("dateTo") || "",
-      search: params.get("search") || "", importId, ...pagination
+      search: params.get("search") || "", importId, includeProfit: params.get("includeProfit") !== "0", ...pagination
     }));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "读取司机作业失败" }, { status: 500 });

@@ -6,6 +6,7 @@ import { driverTaskLabel, type DriverDay } from "@/lib/oak-driver-types";
 import { buildDriverRoutes, buildDriverRouteStyles, locationCity, locationPosition, type DriverLocations, type DriverRoute, type DriverRouteStyle } from "@/lib/oak-route-types";
 import { loadGoogleMaps, onGoogleMapsAuthorizationFailure } from "@/lib/google-maps-client";
 import OakLocationLabel from "./oak-location-label";
+import {getGoogleRoadRoute,googleRoadKey,type GoogleRoadRoute} from '@/lib/google-road-route';
 
 function routePath(route: DriverRoute) {
   const from = locationPosition(route.from); const to = locationPosition(route.to);
@@ -21,7 +22,7 @@ function lineStyle(style: DriverRouteStyle, active: boolean): google.maps.Polyli
 
 type MapSelection = { scope: string; mode: "segment" | "overview"; routeId: string };
 
-export default function OakDriverRouteMap({ days, locations, driverName, allDates, onSelectDate }: { days: DriverDay[]; locations: DriverLocations; driverName: string; allDates: boolean; onSelectDate: (date: string) => void }) {
+export default function OakDriverRouteMap({ days, locations, driverName, allDates, onSelectDate,initialTaskId }: { initialTaskId?:string; days: DriverDay[]; locations: DriverLocations; driverName: string; allDates: boolean; onSelectDate: (date: string) => void }) {
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const lines = useRef<Map<string, google.maps.Polyline>>(new Map());
@@ -31,7 +32,7 @@ export default function OakDriverRouteMap({ days, locations, driverName, allDate
   const styles = useMemo(() => buildDriverRouteStyles(routes), [routes]);
   const scope = `${allDates ? "all" : "day"}:${days.map(day => day.workDate).join(",")}`;
   const [selection, setSelection] = useState<MapSelection | null>(null);
-  const current = selection?.scope === scope ? selection : { scope, mode: allDates ? "overview" as const : "segment" as const, routeId: routes[0]?.id || "" };
+  const current = selection?.scope === scope ? selection : { scope, mode: allDates ? "overview" as const : "segment" as const, routeId: (initialTaskId?routes.find(route=>route.task.id===initialTaskId)?.id:null)||routes[0]?.id || "" };
   const mode = current.mode;
   const selectedIndex = Math.max(0, routes.findIndex(route => route.id === current.routeId));
   const selected = mode === "segment" ? routes[selectedIndex] : null;
@@ -52,10 +53,20 @@ export default function OakDriverRouteMap({ days, locations, driverName, allDate
   const pending = routes.length - mapped.length;
   const shown = visibleRoutes.filter(route => routePath(route)).length;
   const overviewLabel = days.length > 1 ? "多日总览" : "当日总览";
+  const [road,setRoad]=useState<{key:string;status:'loading'|'ready'|'error';value?:GoogleRoadRoute;error?:string}|null>(null),[roadAttempt,setRoadAttempt]=useState(0);
+  const roadKey=selected?googleRoadKey(selected.from,selected.to):'';
+  const currentRoad=road?.key===roadKey?road:null;
+  const roadPath=useRef<google.maps.LatLngLiteral[]|null>(null);roadPath.current=mode==='segment'&&currentRoad?.status==='ready'?currentRoad.value!.path:null;
+  useEffect(()=>{
+    if(status!=='ready'||!selected?.from||!selected.to||!routePath(selected))return;
+    let cancelled=false;setRoad({key:roadKey,status:'loading'});
+    void getGoogleRoadRoute(selected.from,selected.to).then(value=>{if(!cancelled)setRoad({key:roadKey,status:'ready',value});}).catch(error=>{if(!cancelled)setRoad({key:roadKey,status:'error',error:(error as Error).message});});
+    return()=>{cancelled=true;};
+  },[status,roadKey,selected?.id,roadAttempt]);
 
   const fitRoutes = useCallback((items: DriverRoute[]) => {
     if (!map.current) return;
-    const points = items.flatMap(route => [locationPosition(route.from), locationPosition(route.to)].filter((point): point is google.maps.LatLngLiteral => point !== null));
+    const points = items.length===1&&roadPath.current?roadPath.current:items.flatMap(route => [locationPosition(route.from), locationPosition(route.to)].filter((point): point is google.maps.LatLngLiteral => point !== null));
     if (!points.length) return;
     const bounds = new google.maps.LatLngBounds(); points.forEach(point => bounds.extend(point));
     map.current.fitBounds(bounds, 60);
@@ -145,28 +156,31 @@ export default function OakDriverRouteMap({ days, locations, driverName, allDate
     if (status !== "ready") return;
     const visibleIds = new Set(visibleRoutes.map(route => route.id));
     const visiblePoints = new Set(visibleRoutes.flatMap(route => [locationPosition(route.from), locationPosition(route.to)]).filter((point): point is google.maps.LatLngLiteral => point !== null).map(point => `${point.lat},${point.lng}`));
-    lines.current.forEach((line, id) => { line.setVisible(visibleIds.has(id)); line.setOptions(lineStyle(styles[id], id === selectedId)); });
+    lines.current.forEach((line, id) => { line.setVisible(visibleIds.has(id));line.setPath(id===selectedId&&roadPath.current?roadPath.current:routePath(routes.find(route=>route.id===id)!)||[]); line.setOptions(lineStyle(styles[id], id === selectedId)); });
     dots.current.forEach((dot, key) => dot.setVisible(visiblePoints.has(key)));
     infoWindow.current?.close();
     return fitRoutes(visibleRoutes);
-  }, [selectedId, visibleRoutes, styles, status, fitRoutes]);
+  }, [selectedId, visibleRoutes, styles, status, fitRoutes,currentRoad,routes]);
 
   return <div className="oak-route-map" data-map-status={status} data-map-mode={mode} data-mapped-routes={mapped.length} data-visible-routes={shown} data-selected-route={selectedId}>
     <div className="oak-map-view-head"><div className="oak-map-context"><CalendarDays size={15} /><strong>{allDates ? `${days[0]?.workDate || ""} 至 ${days.at(-1)?.workDate || ""}` : days[0]?.workDate}</strong><span>{allDates ? `${days.length} 天范围` : "当日作业"}</span></div><div className="oak-map-modes" role="group" aria-label="线路显示方式"><button aria-pressed={mode === "segment"} className={mode === "segment" ? "active" : ""} onClick={() => chooseRoute(current.routeId || routes[0]?.id || "")}><RouteIcon size={14} />逐段查看</button><button aria-pressed={mode === "overview"} className={mode === "overview" ? "active" : ""} onClick={() => setSelection({ ...current, mode: "overview" })}><Layers3 size={14} />{overviewLabel}</button></div></div>
-    <div className="oak-map-accuracy"><Info size={14} /><strong>起终点示意，非道路路线 / GPS 轨迹</strong>{mode === "overview" && days.length > 1 ? <span className="oak-map-multiday">{days.length} 天、{routes.length} 段叠加显示</span> : null}</div>
+    <div className="oak-map-accuracy"><Info size={14} /><strong>{selected&&currentRoad?.status==='ready'?'Google 道路参考，非 GPS 轨迹 / 货车导航':'起终点示意，非道路路线 / GPS 轨迹'}</strong>{mode === "overview" && days.length > 1 ? <span className="oak-map-multiday">{days.length} 天、{routes.length} 段叠加显示</span> : null}</div>
+    {selected&&currentRoad?.status==='error'?<div className="oak-location-error" role="status">{currentRoad.error}<button className="icon-button" title="重试道路参考" onClick={()=>setRoadAttempt(value=>value+1)}><RefreshCw size={14}/></button></div>:null}
+    {selected&&currentRoad?.status==='loading'?<div className="oak-map-road-status" role="status">正在读取 Google 道路参考...</div>:null}
+    {selected&&currentRoad?.status==='ready'?<div className="oak-map-road-status">Google 参考：{currentRoad.value?.miles?.toFixed(1)||'—'} mi · {currentRoad.value?.minutes==null?'—':Math.round(currentRoad.value.minutes)} 分钟</div>:null}
     {selected ? <div className="oak-map-current"><div className="oak-map-step"><div className="oak-map-step-buttons"><button className="icon-button" title="上一段" disabled={!selectedIndex} onClick={() => chooseRoute(routes[selectedIndex - 1].id)}><ChevronLeft size={15} /></button><strong>{allDates ? `${selected.date} · ` : ""}第 {selectedIndex + 1} / {routes.length} 段</strong><button className="icon-button" title="下一段" disabled={selectedIndex >= routes.length - 1} onClick={() => chooseRoute(routes[selectedIndex + 1].id)}><ChevronRight size={15} /></button></div><span>{driverTaskLabel(selected.task)} · 原表 {selected.task.miles == null ? "-" : selected.task.miles.toLocaleString("en-US")} mi</span></div><div className="oak-map-current-endpoints"><OakLocationLabel code={selected.task.fromLocation} locations={locations} /><ArrowRight size={16} /><OakLocationLabel code={selected.task.toLocation} locations={locations} /></div></div> : null}
     <div className="oak-map-summary"><span><MapPin size={14} />图中显示 {shown} 段<span className="oak-map-located">已定位 {mapped.length} / {routes.length} 段</span></span>{pending ? <span className="oak-map-pending"><TriangleAlert size={14} />{pending} 段有地点待定位</span> : null}<button className="icon-button" title="适应当前视图" disabled={status !== "ready"} onClick={() => fitRoutes(visibleRoutes)}><LocateFixed size={16} /></button></div>
     <div className="oak-route-map-layout">
       <div className="oak-map-pane"><div className="oak-map-canvas-wrap"><div ref={container} className="oak-map-canvas" aria-label={`${driverName} 运输线路地图`} />
-        {status === "ready" ? <div className="oak-map-scene-label">{selected ? `${selected.date} · 第 ${selected.number} / ${routes.length} 段` : `${overviewLabel} · ${days.length} 天 / ${routes.length} 段`}<small>起终点示意</small></div> : null}
+        {status === "ready" ? <div className="oak-map-scene-label">{selected ? `${selected.date} · 第 ${selected.number} / ${routes.length} 段` : `${overviewLabel} · ${days.length} 天 / ${routes.length} 段`}<small>{selected&&currentRoad?.status==='ready'?'道路参考':'起终点示意'}</small></div> : null}
         {status !== "ready" ? <div className="oak-map-state" role="status"><MapPin size={26} /><strong>{status === "loading" ? "正在加载 Google Maps..." : "地图暂不可用"}</strong>{error ? <p>{error}</p> : null}{status === "error" ? <button className="button ghost" onClick={() => { if (error.includes("授权失败")) window.location.reload(); else setAttempt(value => value + 1); }}><RefreshCw size={14} />{error.includes("授权失败") ? "刷新页面" : "重试"}</button> : null}</div> : !shown ? <div className="oak-map-no-routes">{selected ? "本段地点待定位，未绘制连线" : "当前作业没有可连线的完整起终点"}</div> : null}
-      </div><div className="oak-map-footnote">起终点示意连线，非实际行驶轨迹。邮编按区域定位；里程沿用原表。<span>地点坐标：邮编资料库 / <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a> / <a href="https://geocoding.geo.census.gov/geocoder/" target="_blank" rel="noreferrer">U.S. Census</a></span></div></div>
+      </div><div className="oak-map-footnote">{selected&&currentRoad?.status==='ready'?'Google 道路参考，不代表历史实际行驶轨迹，也不保证适用于货车。':'起终点示意连线，非道路路线或实际轨迹。'}邮编按区域定位；核算里程沿用原表。<span>地点坐标：邮编资料库 / <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap</a> / <a href="https://geocoding.geo.census.gov/geocoder/" target="_blank" rel="noreferrer">U.S. Census</a></span></div></div>
       <div className="oak-map-route-list" aria-label="地图线路明细">{days.map(day => <section key={day.workDate}><h4><CalendarDays size={13} />{day.workDate}<span>{day.taskCount} 段</span></h4>{routes.filter(route => route.date === day.workDate).map(route => {
         const located = Boolean(routePath(route));
         const style = styles[route.id];
         return <div className={`oak-map-route-item${selectedId === route.id ? " active" : ""}`} id={`oak-map-route-${route.id}`} key={route.id}>
           <button className="oak-map-route-select" aria-pressed={selectedId === route.id} onClick={() => chooseRoute(route.id)}><span className="oak-map-route-title"><b style={{ color: style.color }}><span className="oak-map-route-number" style={{ backgroundColor: style.color }}>{route.number}</span>{driverTaskLabel(route.task)}</b><span>原表 {route.task.miles == null ? "-" : route.task.miles.toLocaleString("en-US")} mi</span></span><span className="oak-map-route-reference">{route.task.reference || "无参考号"}</span><span className="oak-map-route-endpoints"><OakLocationLabel code={route.task.fromLocation} locations={locations} /><ArrowRight size={13} /><OakLocationLabel code={route.task.toLocation} locations={locations} /></span></button>
-          <div className="oak-map-route-bottom"><span className={located ? "oak-map-line-legend" : "oak-map-pending"}>{located ? <><i className={style.reverseOf != null ? "reverse" : ""} style={{ borderColor: style.color }} />{style.reverseOf != null ? `与第 ${style.reverseOf} 段反向` : "起终点连线"}</> : "地点待定位，未连线"}</span>{located ? <a title="在 Google Maps 查看道路参考" href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${locationPosition(route.from)!.lat},${locationPosition(route.from)!.lng}`)}&destination=${encodeURIComponent(`${locationPosition(route.to)!.lat},${locationPosition(route.to)!.lng}`)}&travelmode=driving`} target="_blank" rel="noreferrer"><ExternalLink size={13} /><span className="sr-only">Google Maps 道路参考</span></a> : null}</div>
+          <div className="oak-map-route-bottom"><span className={located ? "oak-map-line-legend" : "oak-map-pending"}>{located ? <><i className={style.reverseOf != null ? "reverse" : ""} style={{ borderColor: style.color }} />{selectedId===route.id&&currentRoad?.status==='ready'?'道路参考':style.reverseOf != null ? `与第 ${style.reverseOf} 段反向` : "起终点连线"}</> : "地点待定位，未连线"}</span>{located ? <a title="在 Google Maps 查看道路参考" href={`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(`${locationPosition(route.from)!.lat},${locationPosition(route.from)!.lng}`)}&destination=${encodeURIComponent(`${locationPosition(route.to)!.lat},${locationPosition(route.to)!.lng}`)}&travelmode=driving`} target="_blank" rel="noreferrer"><ExternalLink size={13} /><span className="sr-only">Google Maps 道路参考</span></a> : null}</div>
         </div>;
       })}</section>)}</div>
     </div>

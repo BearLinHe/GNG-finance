@@ -28,7 +28,7 @@ export function PeriodCostDialog({ profit, onClose, onSaved }: { profit: PeriodP
   const [confirmed, setConfirmed] = useState(Boolean(review && !profit.staleReview));
   const [note, setNote] = useState(review?.note || "");
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
-  const payLabel = payeeType === "owner" ? "车主价格" : payeeType === "driver" ? "司机工资" : "工资／车主价格";
+  const payLabel = payeeType === "owner" ? "车主工资" : payeeType === "driver" ? "司机工资" : "工资／车主工资";
   async function save(remove = false) {
     if (remove && !window.confirm("撤销本周期成本核对？历史变更记录会保留，盈亏将重新标记为待核对。")) return;
     setBusy(true); setError(""); let saved = false;
@@ -46,7 +46,7 @@ export function PeriodCostDialog({ profit, onClose, onSaved }: { profit: PeriodP
     <div className="oak-workflow-context"><strong>{profit.scope.subject}</strong><span>{profit.scope.dateFrom} 至 {profit.scope.dateTo} · {profit.scope.importId ? "当前导入批次" : "全部导入批次"}</span><span>{profit.taskCount} 段作业 · 已计价收入 {profit.income.pricedCount || profit.income.includedCount ? incomeMoney(profit.income.amount) : "—"}{profit.income.pendingCount ? ` · ${profit.income.pendingCount} 段待计价` : ""}</span></div>
     {error ? <div className="error" role="alert">{error}</div> : null}
     {profit.staleReview ? <div className="oak-batch-notice">作业范围已变化，原成本仅供核对，尚未用于本次盈亏。</div> : null}
-    <div className="oak-income-field-pair"><label className="field">报酬类型<select required aria-label="报酬类型" value={payeeType} onChange={event => setPayeeType(event.target.value as PayeeType)}><option value="">请选择</option>{(!profit.payeeType || profit.payeeType === "driver") ? <option value="driver">司机工资</option> : null}{(!profit.payeeType || profit.payeeType === "owner") ? <option value="owner">车主价格</option> : null}</select></label><label className="field">报酬成本来源<select aria-label="报酬成本来源" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="settlements">已确认周结算</option><option value="manual">人工核定本周期报酬</option></select></label></div>
+    <div className="oak-income-field-pair"><label className="field">报酬类型<select required aria-label="报酬类型" value={payeeType} onChange={event => setPayeeType(event.target.value as PayeeType)}><option value="">请选择</option>{(!profit.payeeType || profit.payeeType === "driver") ? <option value="driver">司机工资</option> : null}{(!profit.payeeType || profit.payeeType === "owner") ? <option value="owner">车主工资</option> : null}</select></label><label className="field">报酬成本来源<select aria-label="报酬成本来源" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="settlements">已确认周结算</option><option value="manual">人工核定本周期报酬</option></select></label></div>
     {mode === "manual" ? <label className="field">本周期{payLabel} / USD<input required aria-label={`本周期${payLabel} / USD`} type="number" min="0" max="9999999999.99" step="0.01" value={amount} onChange={event => setAmount(event.target.value)} /></label> : <div className="oak-profit-labor">
       <span>{payLabel}（扣款前）<span title="按完整匹配的已确认周结算取基本报酬加补贴；预支、还款等扣款与付款进度不抵减经营成本。"><Info size={14} aria-label="报酬成本口径" role="img" /></span></span>
       <strong>{laborAmount == null ? "待核对" : incomeMoney(laborAmount)}</strong><small>已覆盖 {profit.coveredTaskCount} / {profit.taskCount} 段作业</small>

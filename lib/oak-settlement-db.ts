@@ -62,8 +62,8 @@ export async function saveSettlement(id: string | null, value: unknown) {
         if (!current.rows[0] || current.rows[0].status !== "draft") throw new IncomeInputError("只能修改草稿，已确认结算不可覆盖");
       }
       const source = await settlementPreview(input.subject, input.weekStart);
-      if (source.snapshot.payeeConflict) throw new IncomeInputError("本周同一归属存在不同身份，请先核对导入归属，不能混算车主价格和司机工资");
-      if (source.snapshot.payeeType && source.snapshot.payeeType !== input.payeeType) throw new IncomeInputError(source.snapshot.payeeType === "owner" ? "这周作业属于车主，应按车主价格结算，不能按司机工资保存" : "这周作业属于司机，应按司机工资结算，不能按车主价格保存");
+      if (source.snapshot.payeeConflict) throw new IncomeInputError("本周同一归属存在不同身份，请先核对导入归属，不能混算车主工资和司机工资");
+      if (source.snapshot.payeeType && source.snapshot.payeeType !== input.payeeType) throw new IncomeInputError(source.snapshot.payeeType === "owner" ? "这周作业属于车主，应按车主工资结算，不能按司机工资保存" : "这周作业属于司机，应按司机工资结算，不能按车主工资保存");
       const values = [input.subject, week.start, week.end, input.payeeName, input.payeeType, input.baseAmount,
         JSON.stringify(input.adjustments), totals.totalAmount, input.note, JSON.stringify(source.snapshot), source.sourceHash];
       const result = id ? await client.query(`update oak_weekly_settlements set subject=$1,week_start=$2::date,week_end=$3::date,payee_name=$4,payee_type=$5,base_amount=$6,
@@ -151,8 +151,8 @@ export async function voidSettlementPayment(id: string, paymentId: string, reaso
 }
 export function settlementCsv(record: WeeklySettlement) {
   const rows: unknown[][] = [["周结算单", `#${record.id}`], ["状态", record.status === "draft" ? "草稿" : "已确认"],
-    ["周期", record.weekStart, record.weekEnd], ["作业归属", record.subject], ["收款对象", record.payeeName], ["类型", record.payeeType === "driver" ? "司机工资" : "车主价格"],
-    [record.payeeType === "driver" ? "司机工资" : "车主价格", record.baseAmount], ...record.adjustments.map(item => [item.kind === "allowance" ? "补贴" : "扣款", item.title, item.amount]),
+    ["周期", record.weekStart, record.weekEnd], ["作业归属", record.subject], ["收款对象", record.payeeName], ["类型", record.payeeType === "driver" ? "司机工资" : "车主工资"],
+    [record.payeeType === "driver" ? "司机工资" : "车主工资", record.baseAmount], ...record.adjustments.map(item => [item.kind === "allowance" ? "补贴" : "扣款", item.title, item.amount]),
     ["应付合计", record.totalAmount], ["已登记付款", record.paidAmount], ["未付", paymentBalance(record.totalAmount, record.payments).remaining], ["结算依据", record.note], [],
     ["作业收入参考（不参与应付计算）", record.snapshot.revenue.amount, "待计价路段", record.snapshot.revenue.pendingCount],
     ["日期", "作业", "柜号", "起点", "终点", "原表里程", "已计价收入", "收入状态", "原文件", "工作表", "行"]];

@@ -1257,6 +1257,135 @@ button {
 }
 
 .oak-accounting-main { overflow: auto; }
+.oak-vehicle-workspace { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: none; }
+.oak-inline-toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 3px 0 8px; }
+.oak-inline-toolbar h2 { margin: 0; font-size: 15px; white-space: nowrap; }
+.oak-inline-toolbar > span { font-size: 12px; }
+.oak-inline-toolbar .input-with-icon { margin-left: auto; width: 220px; min-width: 100px; }
+.oak-inline-toolbar input { width: 100%; min-width: 0; }
+.oak-inline-table-scroll { width: 100%; max-height: calc(100dvh - 270px); min-height: 180px; overflow: auto; border: 1px solid var(--line); background: #fff; }
+.oak-inline-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: separate; border-spacing: 0; }
+.oak-inline-table col.vehicle { width: 85px; }
+.oak-inline-table col.driver { width: 125px; }
+.oak-inline-table col.date { width: 142px; }
+.oak-inline-table col.amount { width: 112px; }
+.oak-inline-table col.total { width: 125px; }
+.oak-inline-table col.actions { width: 84px; }
+.oak-category-table { min-width: 920px; }
+.oak-category-table col.amount { width: 150px; }
+.oak-category-table col.source { width: auto; }
+.oak-category-source { color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+.oak-category-source small { display: block; font-size: 11px; }
+.oak-inline-table th, .oak-inline-table td { padding: 7px 8px; border-right: 1px solid #edf0f5; border-bottom: 1px solid var(--line); height: 54px; font-size: 12px; vertical-align: middle; }
+.oak-inline-table th { position: sticky; top: 0; z-index: 2; height: 40px; background: #f5f7fa; font-weight: 600; text-align: left; white-space: normal; }
+.oak-inline-table th:first-child, .oak-inline-table td:first-child { position: sticky; left: 0; background: #fff; z-index: 1; }
+.oak-inline-table th:first-child { z-index: 3; background: #f5f7fa; }
+.oak-inline-table td { position: relative; }
+.oak-inline-table tr[hidden] { display: none; }
+.oak-inline-table td input { width: 100%; min-width: 0; min-height: 32px; padding: 5px 4px; border: 1px solid transparent; border-radius: 3px; background: transparent; font: inherit; color: var(--text); font-variant-numeric: tabular-nums; }
+.oak-inline-table td input:hover:not(:disabled) { border-color: #d9e0ec; }
+.oak-inline-table td input:focus { outline: 2px solid #bfdbfe; border-color: var(--blue); background: #fff; }
+.oak-inline-table td input::placeholder { color: #9aa5b5; }
+.oak-inline-table .oak-inline-amount input { text-align: right; }
+.oak-inline-table .oak-inline-date { padding-inline: 1px; }
+.oak-inline-number input { font-weight: 600; }
+.oak-inline-driver { overflow-wrap: anywhere; }
+.oak-inline-total { text-align: right; font-variant-numeric: tabular-nums; }
+.oak-inline-not-applicable { text-align:right;color:#7a899a; }
+.oak-inline-not-applicable small { display:block;margin-top:4px;font-size:10px; }
+.oak-inline-partial > small { display:block;margin-top:3px;color:#94631b;text-align:right;font-size:10px;line-height:1.4; }
+.oak-inline-total small, .oak-inline-save small { display: block; margin-top: 4px; font-size: 10px; font-weight: 400; overflow-wrap: anywhere; }
+.oak-inline-total small { color: var(--muted); }
+.oak-inline-dirty > td { background: #fffef5; }
+.oak-inline-dirty > td:first-child { background: #fffef5; }
+.oak-inline-save { text-align: center; }
+.oak-inline-reset { position: absolute; left: 0; bottom: 0; display: grid; place-items: center; width: 20px; height: 20px; border: 0; border-radius: 3px; background: #f1f5f9; color: #64748b; cursor: pointer; opacity: 0; }
+.oak-inline-amount:hover .oak-inline-reset, .oak-inline-amount:focus-within .oak-inline-reset { opacity: 1; }
+.oak-inline-empty { text-align: center; height: 120px !important; color: var(--muted); }
+.oak-inline-spinning { animation: oak-inline-spin 1s linear infinite; }
+.oak-ledger-title { display:flex;align-items:center;gap:10px;min-width:0; }
+.oak-ledger-title > span { color:#738094;font-size:12px;white-space:nowrap; }
+.oak-ledger-title b { margin-left:5px;color:#526477;font-size:10px;font-weight:600;background:#eaf0f5;padding:3px 5px;border-radius:3px; }
+.oak-accounting-search { display:flex;align-items:center;gap:10px;flex:1;max-width:420px;min-width:180px;height:40px;margin-left:auto;padding:0 12px;border:1px solid #d6e0e8;border-radius:6px;background:#fff;color:#7c8fa6; }
+.oak-accounting-search:focus-within { border-color:#5b9be8;box-shadow:0 0 0 3px #e8f1ff; }
+.oak-accounting-search > input { width:100%;min-width:0;height:36px;border:0;background:transparent;outline:none;padding:0;color:var(--text);font:inherit;font-size:13px; }
+.oak-accounting-search > .icon-button { flex:0 0 24px;width:24px;height:24px;border:0;background:transparent; }
+.oak-stan-table { border:1px solid #d9e2ec;border-radius:7px;overflow:auto;background:#fff; }
+.oak-stan-table thead th { color:#4f6074;background:#edf2f7;font-size:12px;border-bottom:1px solid #d7e1ec; }
+.oak-stan-table thead th.oak-head-income { color:#146b52;background:#e2f3e9; }
+.oak-stan-table thead th.oak-head-cost { color:#8e571f;background:#fcf0df; }
+.oak-stan-table thead th.oak-head-net { color:#254c84;background:#e7effb; }
+.oak-inline-table th button { display:flex;align-items:center;justify-content:space-between;gap:5px;width:100%;min-height:32px;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer; }
+.oak-inline-table th button svg { opacity:.35;flex:0 0 auto; }
+.oak-inline-table th button:hover svg { opacity:1; }
+.oak-stan-table tbody tr:nth-child(even) > td { background:#f8fafc; }
+.oak-stan-table tbody tr:hover > td { background:#eff6ff; }
+.oak-stan-table tbody tr.oak-inline-dirty > td { background:#fff9e8; }
+.oak-stan-table tbody td { border-right:1px solid #eaf0f5;border-bottom:1px solid #e2e9f0;font-size:13px; }
+.oak-stan-table .oak-money-income input, .oak-stan-table .oak-money-income strong { color:#0d7c55;font-weight:600; }
+.oak-stan-table .oak-money-cost input { color:#955b2c; }
+.oak-stan-table td.oak-inline-total.profit { background:#eaf7ef;color:#0b7c53; }
+.oak-stan-table td.oak-inline-total.loss { background:#fff0ef;color:#ba3f40; }
+.oak-inline-table td input[readonly] { cursor:pointer;background:#f0f5fc;color:#2e65a3; }
+.oak-inline-table td input { font-size:13px; }
+.oak-inline-table td input[type=date] { font-size:12px; }
+.oak-inline-save .icon-button.primary { background:#e3efff;border-color:#c1d8f9;color:#2166c0; }
+.oak-cost-color { color:#955b2c; }
+.oak-amount-filters { display:flex;align-items:flex-end;gap:12px;padding:12px 0;flex-wrap:wrap; }
+.oak-amount-filters label { display:grid;gap:6px;min-width:0;font-size:11px;color:#6a7e95; }
+.oak-amount-filters select { width:220px;max-width:100%; }
+.oak-amount-filters input,.oak-amount-filters select { height:36px;border:1px solid #d6e0e8;border-radius:5px;background:#fff;padding:5px 9px;color:var(--text);font:inherit;font-size:12px; }
+.oak-amount-filter-total { display:grid;gap:5px;min-width:120px;margin-left:auto;text-align:right; }
+.oak-amount-filter-total > span { font-size:11px;color:#718297; }
+.oak-amount-filter-total > strong { font-size:20px;font-variant-numeric:tabular-nums; }
+.oak-amount-table-scroll { max-height:calc(100dvh - 380px);min-height:200px; }
+.oak-amount-table { width:100%;min-width:1080px;table-layout:fixed;border-collapse:separate;border-spacing:0; }
+.oak-amount-table.has-labor { min-width:1200px; }
+.oak-amount-table th,.oak-amount-table td { height:60px;padding:8px 12px;vertical-align:middle;text-align:left; }
+.oak-amount-table th { position:sticky;top:0;z-index:2;height:44px; }
+.oak-amount-table th.oak-col-vehicle { width:220px; }
+.oak-amount-table th.oak-col-dateFrom,.oak-amount-table th.oak-col-dateTo { width:145px; }
+.oak-amount-table th.oak-col-payeeType { width:120px; }
+.oak-amount-table th.oak-col-amount { width:140px; }
+.oak-amount-table th.oak-col-allocation { width:155px; }
+.oak-amount-table th.oak-col-actions { width:100px; }
+.oak-amount-table input,.oak-amount-table select { width:100%;min-width:0;min-height:34px;padding:5px 3px;border:1px solid transparent;border-radius:4px;background:transparent;color:var(--text);font:inherit;font-size:13px; }
+.oak-amount-table input[type=date] { font-size:12px; }
+.oak-amount-table input[type=number] { text-align:right;font-variant-numeric:tabular-nums; }
+.oak-amount-table input:hover,.oak-amount-table select:hover { border-color:#d4dfed; }
+.oak-amount-table input:focus,.oak-amount-table select:focus { outline:2px solid #bad7ff;border-color:#6aa0eb;background:#fff; }
+.oak-allocation-cell { display:grid;gap:5px;text-align:right;font-variant-numeric:tabular-nums; }
+.oak-allocation-cell small { font-size:10px;color:#8290a1; }
+.oak-amount-actions { display:flex;flex-wrap:wrap;gap:5px; }
+.oak-amount-actions > small { flex-basis:100%;font-size:10px;overflow-wrap:anywhere; }
+.oak-number-with-grip { display:flex;align-items:center;gap:3px;min-width:0; }
+.oak-number-with-grip > input,.oak-number-with-grip > select { flex:1;min-width:0; }
+.oak-drag-handle { display:grid;place-items:center;flex:0 0 16px;width:16px;height:28px;padding:0;border:0;background:transparent;color:#a0afbf;cursor:grab; }
+.oak-drag-handle:hover { color:#3874bd; }
+.oak-drag-handle:active { cursor:grabbing; }
+.oak-drag-column { width:100%;min-height:28px;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:grab; }
+.oak-column-resizer { position:absolute;right:0;top:0;z-index:5;width:7px;height:100%;cursor:col-resize;touch-action:none;user-select:none; }
+.oak-column-resizer:hover,.oak-column-resizer:active { background:#8fb4e6; }
+.oak-stan-table th { position:sticky; }
+.oak-stan-table th[draggable=true] { cursor:grab; }
+.oak-amount-workspace > .pagination { background:#fff;border:1px solid #e0e8f0;border-top:0;padding:10px 12px;border-radius:0 0 6px 6px; }
+@keyframes oak-inline-spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) {
+  .oak-inline-toolbar { flex-wrap: wrap; }
+  .oak-inline-toolbar .input-with-icon { order: 2; width: 100%; flex-basis: 100%; margin: 0; }
+  .oak-inline-toolbar > span { margin-right: auto; }
+  .oak-inline-table-scroll { max-height: 65dvh; }
+  .oak-ledger-title { flex-wrap:wrap;gap:6px; }
+  .oak-accounting-search { order:3;flex-basis:100%;min-width:0;max-width:none;margin:0; }
+  .oak-amount-filters { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .oak-amount-filters label:first-child { grid-column:1/-1; }
+  .oak-amount-filters label:first-child select { width:100%; }
+  .oak-amount-filters input { width:100%;min-width:0; }
+  .oak-amount-filter-total { min-width:0; }
+  .oak-amount-table-scroll { max-height:60dvh; }
+  .oak-amount-workspace .oak-inline-toolbar .oak-ledger-title { margin-right:auto; }
+  .oak-amount-workspace > .pagination { flex-wrap:wrap; }
+}
 .oak-driver-workspace { display: flex; flex-direction: column; gap: 12px; min-height: 520px; flex: 1; }
 .oak-driver-actions, .oak-command-buttons, .oak-ledger-head, .oak-dialog-head, .oak-dialog-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .oak-driver-actions h2, .oak-ledger-head h3, .oak-dialog-head h2 { margin: 0; font-size: 15px; }
@@ -1588,6 +1717,39 @@ button {
 .oak-income-tabs { display: flex; gap: 22px; flex: 0 0 auto; border-bottom: 1px solid var(--line); }
 .oak-income-tabs > button { display: flex; align-items: center; gap: 7px; padding: 10px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; }
 .oak-income-tabs > button.active { border-bottom-color: var(--blue); color: #1d4ed8; font-weight: 600; }
+.oak-workspace-nav { display: flex; gap: 12px; align-items: center; min-width: 0; border-bottom: 1px solid var(--line); }
+.oak-workspace-nav > .oak-income-tabs { flex: 1; min-width: 0; border-bottom: 0; }
+.oak-accounting-view { min-width: 0; }
+.oak-source-menu { position: relative; flex: 0 0 auto; }
+.oak-source-menu > summary { list-style: none; cursor: pointer; }
+.oak-source-menu > summary::-webkit-details-marker { display: none; }
+.oak-source-options { position: absolute; z-index: 15; top: calc(100% + 6px); right: 0; display: grid; gap: 3px; width: 175px; padding: 6px; border: 1px solid var(--line); border-radius: 6px; background: #fff; box-shadow: var(--shadow); }
+.oak-source-options > button { display: flex; align-items: center; gap: 8px; padding: 9px; border: 0; border-radius: 3px; background: transparent; text-align: left; color: var(--text); font: inherit; font-size: 12px; cursor: pointer; }
+.oak-source-options > button:hover { background: #f1f5f9; }
+.oak-repair-status { display:flex;align-items:center;gap:7px;font-size:12px;color:#527063;padding:3px 0 6px;flex-wrap:wrap; }
+.oak-source-dot { width:6px;height:6px;border-radius:50%;background:#20a56d;flex:0 0 auto; }
+.oak-source-tag { display:inline-block;padding:2px 6px;border-radius:3px;background:#e5f4ee;color:#21755c;font-size:10px;font-weight:500; }
+.oak-repair-document h3 { margin:0;font-size:14px; }
+.oak-repair-form { flex:1;min-height:0;overflow:hidden; }
+.oak-income-fields.oak-repair-document { display:block;flex:1;min-height:0;overflow:auto; }
+.oak-repair-document > :not(:last-child) { margin-bottom:16px; }
+.oak-repair-meta { display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;padding-bottom:16px;border-bottom:1px solid var(--line); }
+.oak-repair-meta > div { display:grid;gap:7px;font-size:13px; }
+.oak-repair-meta span { font-size:11px;color:var(--muted); }
+.oak-repair-company { display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px; }
+.oak-repair-account { display:flex;align-items:center;gap:18px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px; }
+.oak-repair-account > span { flex:none;color:var(--muted); }
+.oak-repair-account > div { display:grid;gap:5px;min-width:0;overflow-wrap:anywhere; }
+.oak-repair-account small { color:var(--muted);font-size:11px; }
+.oak-repair-items ul { margin:10px 0 0;padding-left:18px;line-height:1.8;font-size:13px; }
+.oak-repair-document .table-wrap { flex:none;max-height:none;overflow:auto;min-height:0; }
+.oak-repair-document table { min-width:440px; }
+.oak-repair-document td { white-space:normal;font-size:12px; }
+.oak-repair-totals { margin:0 0 0 auto;display:grid;gap:10px;width:300px;max-width:100%;font-size:13px; }
+.oak-repair-totals > div { display:flex;justify-content:space-between;gap:15px; }
+.oak-repair-totals dd { margin:0;font-variant-numeric:tabular-nums; }
+.oak-repair-totals > div:last-child { border-top:1px solid var(--line);padding-top:12px;font-weight:700;font-size:16px;color:#995d26; }
+@media(max-width:600px){.oak-repair-meta{grid-template-columns:repeat(2,minmax(0,1fr));}}
 .oak-income-activities, .oak-income-rules { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; min-width: 0; }
 .oak-income-activities[hidden] { display: none; }
 .oak-income-strip { display: grid; grid-template-columns: 1.5fr repeat(3, 1fr); flex: 0 0 auto; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: #fff; }
@@ -1622,14 +1784,82 @@ button {
 .oak-income-row-actions { display: flex; align-items: center; gap: 6px; }
 .oak-day-income { color: #0f766e; font-weight: 600; }
 .oak-period-day-head > span { flex-wrap: wrap; justify-content: flex-end; gap: 7px 16px; }
-.oak-income-rule-search { flex: 0 0 auto; max-width: 520px; }
-.oak-income-rule-search input { width: 100%; }
-.oak-income-rule-scroll { flex: 1; min-height: 200px; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
-.oak-income-rules-table { min-width: 900px; }
-.oak-income-rules-table td { white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
-.oak-income-rules-table td:first-child { width: 23%; }
-.oak-income-rules-table td:last-child { width: 90px; }
-.oak-income-rules-table td small { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+.oak-income-rules-heading { display:flex;align-items:baseline;gap:12px;flex-wrap:wrap; }
+.oak-income-rules-heading h2 { margin:0;font-size:15px; }
+.oak-income-rules-heading > span { color:var(--muted);font-size:11px; }
+.oak-income-rules-toolbar { display:flex;align-items:center;justify-content:space-between;gap:12px;flex:0 0 auto; }
+.oak-income-rule-search { display:flex;align-items:center;gap:10px;flex:1;min-width:0;height:40px;padding:0 12px;border:1px solid #d6e0e8;border-radius:6px;background:#fff;color:#8798aa; }
+.oak-income-rule-search > svg { flex:0 0 auto; }
+.oak-income-rule-search:focus-within { border-color:#5b9be8;box-shadow:0 0 0 3px #e8f1ff; }
+.oak-income-rule-search input { width:100%;min-width:0;height:36px;border:0;outline:none;background:transparent;padding:0;color:var(--text);font:inherit;font-size:13px; }
+.oak-income-rule-search .icon-button { flex:0 0 24px;width:24px;height:24px;border:0;background:transparent; }
+.oak-income-rule-scroll { flex:1;min-height:180px;max-height:none;background:#fff;border:1px solid var(--line);border-radius:6px;overflow:auto;scroll-padding:44px 0 12px; }
+.oak-income-rule-scroll.table-wrap { max-height:none; }
+.oak-income-rules-table { min-width:980px;width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0; }
+.oak-rule-col-route { width:190px; }
+.oak-rule-col-price { width:140px; }
+.oak-rule-col-basis { width:108px; }
+.oak-rule-col-dates { width:156px; }
+.oak-rule-col-status { width:80px; }
+.oak-rule-col-actions { width:96px; }
+.oak-income-rules-table th { position:sticky;top:0;z-index:1;height:44px;padding:10px 12px;background:#edf2f7;color:#526477;font-size:11px; }
+.oak-income-rules-table td { padding:12px;white-space:normal;overflow-wrap:anywhere;line-height:1.6;font-size:12px;vertical-align:middle;border-bottom:1px solid #e5ecf2;background:#fff; }
+.oak-income-rules-table tbody tr:nth-child(even) td { background:#f7f9fc; }
+.oak-income-rules-table tbody tr:hover td { background:#eff6ff; }
+.oak-income-rules-table tbody tr:last-child td { border-bottom:0; }
+.oak-income-rules-table .oak-rule-name { font-size:13px;font-weight:600; }
+.oak-income-rules-table td small { display:block;margin-top:4px;color:var(--muted);font-size:11px; }
+.oak-rule-route { display:grid;grid-template-columns:minmax(0,1fr) 13px minmax(0,1fr);align-items:center;gap:8px; }
+.oak-rule-route svg { color:#8a9bad; }
+.oak-rule-unrestricted { color:#6b7f92; }
+.oak-income-rules-table th.oak-rule-price-head { text-align:right;background:#e0f1e8;color:#1b7257; }
+.oak-rule-price-head small { margin-left:3px;font-size:10px;font-weight:400; }
+.oak-income-rules-table td.oak-rule-price { text-align:right;background:#f1faf5;color:#0f766e;font-variant-numeric:tabular-nums; }
+.oak-income-rules-table tbody tr:nth-child(even) td.oak-rule-price { background:#ebf6f0; }
+.oak-income-rules-table tbody tr:hover td.oak-rule-price { background:#e2f3eb; }
+.oak-rule-price strong { font-size:15px;font-weight:600;white-space:nowrap; }
+.oak-income-rules-table td.oak-rule-price small { display:inline-block;margin:0 0 0 5px;font-size:10px; }
+.oak-rule-basis { display:inline-flex;padding:2px 7px;border-radius:4px;background:#eef3f8;color:#526477;font-size:11px; }
+.oak-rule-basis.trip { background:#edf3ff;color:#3c65a1; }
+.oak-rule-dates { font-variant-numeric:tabular-nums;font-size:11px; }
+.oak-income-rules-table .oak-income-status { gap:5px;white-space:nowrap; }
+.oak-income-rules-table .oak-income-status i { width:5px;height:5px;border-radius:50%;background:currentColor; }
+.oak-income-rules-table tr.oak-rule-inactive .oak-rule-name { color:#718297; }
+.oak-income-rules-table th:last-child,.oak-income-rules-table td:last-child { position:sticky;right:0;border-left:1px solid #e5ecf2; }
+.oak-income-rules-table th:last-child { z-index:2; }
+.oak-income-rules-table .oak-income-row-actions { gap:6px; }
+.oak-income-rules-footer { display:flex;align-items:center;justify-content:space-between;gap:10px;flex:0 0 auto;color:var(--muted);font-size:11px; }
+.oak-income-rules-footer > span:last-child { display:flex;align-items:center;gap:8px; }
+.oak-income-rules-footer b { padding:2px 5px;border-radius:3px;background:#edf2f7;color:#5b718a;font-size:10px;font-weight:500; }
+.oak-income-dialog:has(> .oak-income-rules-host) { width:min(1160px,100%); }
+.oak-income-rules-host { display:flex;flex:1;min-height:0;overflow:hidden;padding:18px 20px; }
+.oak-income-rules-host .oak-income-rule-scroll { min-height:0; }
+@media(max-width:600px) {
+  .oak-income-rules-host { padding:14px; }
+  .oak-income-rules-toolbar { flex-wrap:wrap;gap:10px; }
+  .oak-income-rule-search { flex-basis:100%; }
+  .oak-income-rules-toolbar > .button { margin-left:auto; }
+  .oak-income-rules-table { display:block;min-width:0;table-layout:auto; }
+  .oak-income-rules-table colgroup { display:none; }
+  .oak-income-rules-table thead { position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%); }
+  .oak-income-rules-table tbody { display:block; }
+  .oak-income-rules-table tbody tr { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px 12px;padding:14px 12px;border-bottom:1px solid #e5ecf2; }
+  .oak-income-rules-table tbody tr:nth-child(even) { background:#f7f9fc; }
+  .oak-income-rules-table tbody tr:last-child { border-bottom:0; }
+  .oak-income-rules-table tbody td { display:block; }
+  .oak-income-rules-table tbody tr td,.oak-income-rules-table tbody tr:nth-child(even) td,.oak-income-rules-table tbody tr:hover td { min-width:0;padding:0;border:0;background:transparent; }
+  .oak-income-rules-table td:nth-child(1) { grid-column:1;grid-row:1; }
+  .oak-income-rules-table td:nth-child(2) { grid-column:1/-1;grid-row:2; }
+  .oak-income-rules-table td:nth-child(3) { grid-column:2;grid-row:1; }
+  .oak-income-rules-table td:nth-child(4) { display:flex;align-items:center;gap:8px;grid-column:1;grid-row:3; }
+  .oak-income-rules-table td:nth-child(4) small { margin:0; }
+  .oak-income-rules-table td:nth-child(5) { grid-column:1;grid-row:4;align-self:center;font-size:11px; }
+  .oak-income-rules-table td:nth-child(6) { grid-column:2;grid-row:3;justify-self:end; }
+  .oak-income-rules-table td:last-child { position:static;grid-column:2;grid-row:4;justify-self:end;align-self:center; }
+  .oak-income-rules-table td[colspan] { grid-column:1/-1;grid-row:auto; }
+  .oak-income-rules-table .oak-rule-route { grid-template-columns:minmax(0,1fr) 13px minmax(0,1fr); }
+  .oak-income-rule-scroll { scroll-padding:8px 0; }
+}
 .oak-income-backdrop { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 20px; background: #0f172a55; }
 .oak-income-dialog { display: flex; flex-direction: column; width: min(540px, 100%); max-height: calc(100dvh - 40px); overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--shadow); }
 .oak-income-dialog .oak-dialog-head { padding: 16px 20px; }
@@ -1646,6 +1876,85 @@ button {
 .oak-income-task-context { display: grid; gap: 7px; padding-bottom: 14px; border-bottom: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
 .oak-income-task-context small { color: var(--muted); line-height: 1.6; }
 .oak-income-reset { margin-right: auto; }
+.oak-income-workspace .oak-inline-toolbar { flex-wrap:wrap; }
+.oak-income-workspace .oak-ledger-title { margin-right:auto; }
+.oak-income-workspace .oak-payroll-message { flex-basis:100%; }
+.oak-income-workspace .oak-amount-filters { padding:0 0 2px; }
+.oak-income-workspace .oak-amount-filters label:last-of-type select { width:150px; }
+.oak-income-table-frame { min-width:0;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:#fff; }
+.oak-income-table-frame .oak-income-ledger-scroll { border:0;border-radius:0; }
+.oak-income-ledger-scroll { overflow:auto;max-height:62dvh;min-height:180px;background:#fff; }
+.oak-income-pagination { display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:58px;padding:11px 14px;border-top:1px solid var(--line);background:#fff;font-size:12px;color:#718398; }
+.oak-income-page-range { min-width:0;line-height:1.6;font-variant-numeric:tabular-nums; }
+.oak-income-page-range strong { color:#41566b;font-weight:500; }
+.oak-income-page-controls { display:flex;align-items:center;gap:16px;flex:0 0 auto; }
+.oak-income-page-size { display:flex;align-items:center;gap:8px;white-space:nowrap; }
+.oak-income-page-select { position:relative;display:block; }
+.oak-income-page-select select { display:block;appearance:none;width:86px;height:34px;padding:0 27px 0 10px;border:1px solid #d7e1ea;border-radius:5px;background:#fff;color:#41566b;font:inherit;font-size:12px;cursor:pointer; }
+.oak-income-page-select > svg { position:absolute;right:9px;top:11px;pointer-events:none;color:#8495a7; }
+.oak-income-page-navigation { display:flex;align-items:center;gap:6px; }
+.oak-income-page-navigation > .icon-button { flex:0 0 34px;width:34px;height:34px;border-color:#d7e1ea;border-radius:5px;color:#4c6279; }
+.oak-income-page-navigation > .icon-button:not(:disabled):hover { background:#eef5ff;border-color:#b7cff1;color:#2563eb; }
+.oak-income-page-number { display:flex;align-items:center;justify-content:center;gap:6px;height:34px;min-width:100px;padding:0 8px;border:1px solid #d7e1ea;border-radius:5px;white-space:nowrap;font-variant-numeric:tabular-nums; }
+.oak-income-page-number input { width:32px;min-width:0;height:30px;padding:0;border:0;outline:none;background:transparent;text-align:center;color:#263d55;font:inherit;font-size:12px;font-weight:600; }
+.oak-income-page-number > span { color:#718398;font-size:11px; }
+.oak-income-page-number:focus-within { border-color:#5b9be8;box-shadow:0 0 0 2px #e8f1ff; }
+.oak-income-pagination .icon-button:disabled,.oak-income-page-select select:disabled { color:#afbac6;background:#f6f8fa;border-color:#e6ecf1;cursor:not-allowed;box-shadow:none; }
+.oak-income-page-number input:disabled { color:#8696a8;cursor:default;opacity:1;-webkit-text-fill-color:#8696a8; }
+.oak-income-page-select select:focus-visible,.oak-income-page-navigation > button:focus-visible { outline:2px solid #bdd4f5;outline-offset:2px; }
+.oak-income-pagination[aria-busy="true"] .oak-income-page-range { color:#96a3b1; }
+@media(max-width:650px) {
+  .oak-income-pagination { flex-wrap:wrap;gap:10px;padding:10px; }
+  .oak-income-page-range { flex-basis:100%; }
+  .oak-income-page-controls { flex:1;justify-content:space-between;gap:8px; }
+  .oak-income-page-size { gap:6px; }
+  .oak-income-page-select select { width:76px;height:34px;padding-left:8px; }
+  .oak-income-page-navigation > .icon-button { flex-basis:32px;width:32px; }
+  .oak-income-page-number { min-width:92px;padding:0 5px;gap:4px; }
+}
+@media(max-width:360px) {
+  .oak-income-page-size > span:first-child { display:none; }
+  .oak-income-page-size { gap:0; }
+}
+.oak-income-ledger-scroll[data-loading="true"] { opacity:.55;pointer-events:none; }
+.oak-income-ledger-table { width:100%;table-layout:fixed;min-width:1120px;border-collapse:collapse; }
+.oak-income-ledger-table th { position:sticky;top:0;z-index:1;background:#eaf1f6;font-size:11px; }
+.oak-income-ledger-table th:nth-child(1) { width:120px; }
+.oak-income-ledger-table th:nth-child(2) { width:120px; }
+.oak-income-ledger-table th:nth-child(3) { width:160px; }
+.oak-income-ledger-table th:nth-child(4) { width:170px; }
+.oak-income-ledger-table th:nth-child(5) { width:135px;background:#e2f3eb;color:#17745a; }
+.oak-income-ledger-table th:nth-child(7) { width:176px; }
+.oak-income-ledger-table td { padding:12px;vertical-align:middle;white-space:normal;overflow-wrap:anywhere;line-height:1.6;font-size:12px; }
+.oak-income-ledger-table tbody tr:nth-child(even) { background:#f7fafc; }
+.oak-income-ledger-table tbody tr:hover { background:#f0f7ff; }
+.oak-income-ledger-table small { display:block;margin-top:4px;color:var(--muted);font-size:10px;line-height:1.6; }
+.oak-income-route { display:grid;grid-template-columns:minmax(0,1fr) 13px minmax(0,1fr);align-items:center;gap:8px; }
+.oak-income-route svg { color:#8795a4; }
+.oak-income-manual-host { display:flex;flex-direction:column;min-height:0;overflow:auto;padding:16px; }
+.oak-income-manual-host > .oak-vehicle-workspace { min-height:300px; }
+.oak-income-dialog:has(> .oak-income-map-host) { width:min(1440px,100%);height:min(900px,calc(100dvh - 40px)); }
+.oak-income-map-host { display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden; }
+.oak-income-map-date { flex:0 0 auto;padding:8px 16px;border-bottom:1px solid var(--line); }
+.oak-income-map-date label { display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px; }
+.oak-income-map-date select { min-height:32px;max-width:100%;border:1px solid var(--line);border-radius:4px;padding:4px 8px;background:#fff;color:var(--text);font:inherit; }
+.oak-map-road-status { flex:0 0 auto;padding:6px 16px;color:#0f766e;background:#f0fdf8;border-bottom:1px solid var(--line);font-size:11px; }
+.oak-income-import-table { min-width:960px;table-layout:fixed; }
+.oak-income-import-table th:nth-child(1) { width:60px; }
+.oak-income-import-table th:nth-child(2) { width:135px; }
+.oak-income-import-table th:nth-child(3) { width:210px; }
+.oak-income-import-table th:nth-child(4) { width:115px; }
+.oak-income-import-table th:nth-child(5) { width:100px; }
+.oak-income-import-table td { white-space:normal;overflow-wrap:anywhere; }
+.oak-income-import-table select { width:100%;min-height:34px;border:1px solid var(--line);border-radius:4px;padding:4px;background:#fff;font:inherit; }
+.oak-income-import-table small { display:block;margin-top:4px;color:var(--muted); }
+@media(max-width:700px) {
+  .oak-income-workspace .oak-accounting-search { flex-basis:100%;width:100%;max-width:none;order:2; }
+  .oak-income-workspace .oak-amount-filters label:last-of-type select { width:100%; }
+  .oak-income-ledger-scroll { max-height:65dvh; }
+  .oak-income-dialog:has(> .oak-income-map-host) { height:calc(100dvh - 16px); }
+  .oak-income-manual-host { padding:12px; }
+}
 
 @media (max-width: 1100px) {
   .oak-periods-table .oak-period-income { grid-column: 1 / -1; grid-row: 4; padding-top: 10px; border-top: 1px solid var(--line); }
@@ -1676,6 +1985,78 @@ button {
 }
 
 .oak-workflow-dialog { width: min(1040px, 100%); }
+.oak-income-dialog:has(> .oak-payroll-preview-scroll) { width:min(1440px,100%); }
+.oak-amount-workspace .oak-inline-toolbar { flex-wrap:wrap; }
+.oak-payroll-message { flex-basis:100%;font-size:12px; }
+.oak-payroll-message.pending { color:#9a6416; }
+.oak-payroll-batch-bar { display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:end;gap:12px;flex:0 0 auto;padding:12px 20px;border-bottom:1px solid var(--line);background:#f5f8fc;font-size:12px; }
+.oak-payroll-batch-bar > label:first-child { display:grid;gap:5px;min-width:0;color:var(--muted);font-size:11px; }
+.oak-payroll-batch-bar select { width:100%;min-width:0;min-height:36px;border:1px solid var(--line);border-radius:5px;padding:5px 8px;background:#fff;font:inherit;color:var(--text); }
+.oak-payroll-file-enabled { display:flex;align-items:center;gap:6px;min-height:36px;white-space:nowrap; }
+.oak-payroll-file-enabled input { accent-color:var(--blue);width:16px;height:16px; }
+.oak-payroll-batch-bar > span { align-self:center;color:var(--muted);overflow-wrap:anywhere; }
+.oak-payroll-file-error { display:flex;align-items:center;justify-content:space-between;gap:10px;overflow-wrap:anywhere; }
+.oak-payroll-file-empty { min-height:120px;padding:24px;color:var(--muted);font-size:13px; }
+.oak-payroll-preview-head > strong .oak-source-tag { margin-left:10px; }
+@media(max-width:680px) {
+  .oak-payroll-batch-bar { grid-template-columns:auto minmax(0,1fr);gap:6px 12px;padding:10px 12px; }
+  .oak-payroll-batch-bar > label:first-child { grid-column:1/-1; }
+  .oak-payroll-batch-bar > span { text-align:right; }
+}
+.oak-payroll-preview-head { display:grid;gap:12px;flex:0 0 auto;padding:14px 20px;border-bottom:1px solid var(--line);font-size:13px; }
+.oak-payroll-preview-head > strong { overflow-wrap:anywhere; }
+.oak-payroll-period { display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap; }
+.oak-payroll-period > label { display:grid;gap:5px;font-size:11px;color:var(--muted); }
+.oak-payroll-period input { min-height:36px;border:1px solid var(--line);border-radius:5px;padding:5px 9px;font:inherit;color:var(--text);background:#fff; }
+.oak-payroll-period > span { display:grid;gap:4px;margin-left:auto;color:var(--muted);font-size:11px; }
+.oak-payroll-period > span strong { color:#965523;font-size:18px; }
+.oak-payroll-preview-scroll { flex:1;min-height:0;overflow:auto; }
+.oak-payroll-preview-scroll.table-wrap { max-height:none; }
+.oak-income-dialog:has(> .oak-payroll-preview-scroll) > .oak-dialog-head,
+.oak-income-dialog:has(> .oak-payroll-preview-scroll) > .oak-dialog-actions { flex:0 0 auto; }
+.oak-payroll-preview-table { min-width:1260px;width:100%;table-layout:fixed; }
+.oak-payroll-preview-table th { position:sticky;top:0;z-index:1;background:#eef3f8;text-align:left; }
+.oak-payroll-preview-table th,.oak-payroll-preview-table td { padding:10px 12px;font-size:12px;white-space:normal;vertical-align:top; }
+.oak-payroll-preview-table th:first-child { width:55px; }
+.oak-payroll-preview-table th:nth-child(2) { width:125px; }
+.oak-payroll-preview-table th:nth-child(3) { width:200px; }
+.oak-payroll-preview-table th:nth-child(4) { width:115px; }
+.oak-payroll-preview-table th:nth-child(5) { width:255px; }
+.oak-payroll-preview-table th:nth-child(6) { width:130px;color:#935621;background:#fcf0df; }
+.oak-payroll-preview-table tr.selected > td { background:#f4f9ff; }
+.oak-payroll-preview-table select,.oak-payroll-preview-table input:not([type=checkbox]) { width:100%;min-width:0;min-height:34px;padding:5px 7px;border:1px solid #d6e0eb;border-radius:4px;background:#fff;font:inherit;color:var(--text); }
+.oak-payroll-preview-table input[type=checkbox] { width:16px;height:16px;margin:9px 0;accent-color:var(--blue); }
+.oak-payroll-preview-table input[type=number] { color:#955b2c;text-align:right;font-variant-numeric:tabular-nums; }
+.oak-payroll-preview-table small { display:block;margin-top:5px;font-size:11px;line-height:1.5;overflow-wrap:anywhere; }
+.oak-payroll-preview-table small.pending { color:#9a6416; }
+.oak-payroll-candidate,.oak-payroll-note { display:flex;align-items:center;gap:5px;min-width:0; }
+.oak-payroll-candidate > select,.oak-payroll-note > input { flex:1;min-width:0; }
+.oak-payroll-candidate > button,.oak-payroll-note > button { flex:0 0 30px; }
+.oak-payroll-evidence { display:grid;gap:10px;min-height:0;overflow:auto;padding:18px 20px;font-size:12px;overflow-wrap:anywhere; }
+.oak-payroll-amount-pair { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 0;border-block:1px solid var(--line); }
+.oak-payroll-amount-pair > span { display:grid;gap:6px;color:var(--muted); }
+.oak-payroll-amount-pair strong { font-size:17px;color:#955b2c; }
+.oak-payroll-evidence .table-wrap { max-height:45dvh;overflow:auto; }
+.oak-payroll-evidence table { width:100%;min-width:0; }
+.oak-payroll-evidence td { white-space:normal;overflow-wrap:anywhere; }
+.oak-income-dialog:has(> .oak-payroll-preview-scroll) > .error { margin:10px 16px;flex:0 0 auto; }
+@media(max-width:680px) {
+  .oak-payroll-preview-head { padding:12px; }
+  .oak-payroll-period { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px; }
+  .oak-payroll-period input { width:100%;min-width:0; }
+  .oak-payroll-period > span { grid-column:1/-1;display:flex;align-items:center;gap:10px;margin-left:0; }
+}
+@media(max-height:500px) and (min-width:681px) {
+  .oak-income-dialog:has(> .oak-payroll-preview-scroll) { height:calc(100dvh - 40px); }
+  .oak-income-dialog:has(> .oak-payroll-preview-scroll) > .oak-dialog-head { padding:8px 14px; }
+  .oak-income-dialog:has(> .oak-payroll-preview-scroll) > .oak-dialog-head span { display:none; }
+  .oak-income-dialog:has(> .oak-payroll-preview-scroll) > .oak-dialog-actions { padding:8px 14px; }
+  .oak-payroll-preview-head { padding:8px 14px;gap:6px; }
+  .oak-payroll-period { align-items:center; }
+  .oak-payroll-period > label { display:flex;align-items:center;gap:6px;white-space:nowrap; }
+  .oak-payroll-period input { width:125px; }
+  .oak-payroll-preview-table th,.oak-payroll-preview-table td { padding-block:8px; }
+}
 .oak-workflow-context { display: grid; gap: 7px; padding: 14px 18px; background: #f8fafc; border-bottom: 1px solid var(--line); color: #334155; font-size: 12px; overflow-wrap: anywhere; flex: 0 0 auto; }
 .oak-workflow-context small { font-size: 11px; line-height: 1.7; color: var(--muted); }
 .oak-workflow-context > .oak-income-status { justify-self: start; }

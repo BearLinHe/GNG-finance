@@ -141,6 +141,9 @@ export async function deleteDriverImport(id: number) {
       const costs = await client.query(`select r.id from oak_period_cost_reviews r where r.import_id=$1 or exists(
         select 1 from oak_driver_tasks t where t.import_id=$1 and r.task_ids ? t.id::text) limit 1`, [id]);
       if (costs.rowCount) throw new Error("该批次已关联周期成本核对，请先撤销成本核对，不能直接删除");
+      const vehicleCosts = await client.query(`select r.id from oak_vehicle_accounting r where exists(
+        select 1 from oak_driver_tasks t where t.import_id=$1 and r.task_ids ? t.id::text) limit 1`, [id]);
+      if (vehicleCosts.rowCount) throw new Error("该批次已用于单车核算，不能直接删除原始作业");
       const result = await client.query("delete from oak_driver_imports where id=$1 returning id", [id]);
       await client.query("commit"); return result.rowCount === 1;
     } catch (e) { await client.query("rollback"); throw e; }

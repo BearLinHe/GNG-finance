@@ -31,9 +31,9 @@ import { money } from "@/lib/money";
 import OperatingStandards, { type StandardCategory } from "./operating-standards";
 import OakTransportAccounting from "./oak-transport-accounting";
 import SavContainerAccounting from "./sav-container-accounting";
+import {readWorkspaceNavigation,workspaceNavigationKey,workspaceNavigationUrl,type AccountingModule,type OakWorkspaceView} from "@/lib/workspace-navigation";
 
 type TabKey = "initial" | "container" | "fees";
-type AccountingModule = "external" | "oak-transport" | "sav";
 type FeeOrigin = "source" | "legacy" | "system";
 type InitialBillKind = "unload" | "direct_delivery";
 type InitialDateField = "orderDate" | "etaDate" | "pickupDate" | "unloadDate" | "returnDeadline";
@@ -634,13 +634,9 @@ function DataTable<T>({
 
 export default function Home() {
   const [activeModule, setActiveModule] = useState<AccountingModule>("external");
+  const [navigationReady, setNavigationReady] = useState(false);
+  const [oakView, setOakView] = useState<OakWorkspaceView>('vehicles');
   const [externalNavExpanded, setExternalNavExpanded] = useState(true);
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get("module") === "sav") {
-      setActiveModule("sav");
-      setExternalNavExpanded(false);
-    }
-  }, []);
   const [tab, setTab] = useState<TabKey>("initial");
   const [search, setSearch] = useState("");
   const [containerSearch, setContainerSearch] = useState("");
@@ -687,6 +683,24 @@ export default function Home() {
   const [error, setError] = useState("");
   const initialLoadSeq = useRef(0);
   const containerLoadSeq = useRef(0);
+
+  useEffect(() => {
+    let stored: string | null = null;
+    try { stored = window.sessionStorage.getItem(workspaceNavigationKey); } catch { /* URL navigation still works without storage. */ }
+    const restored = readWorkspaceNavigation(window.location.search, stored);
+    setActiveModule(restored.module); setTab(restored.tab); setOakView(restored.oakView);
+    setInitialKind(restored.initialKind); setContainerKind(restored.containerKind); setStandardCategory(restored.standardCategory);
+    setExternalNavExpanded(restored.module === 'external');
+    setExpandedNav(restored.tab === 'fees' ? 'standards' : restored.tab === 'container' ? 'profit' : 'source');
+    setNavigationReady(true);
+  }, []);
+  useEffect(() => {
+    if (!navigationReady) return;
+    const state = {module:activeModule,tab,initialKind,containerKind,standardCategory,oakView};
+    try { window.sessionStorage.setItem(workspaceNavigationKey,JSON.stringify(state)); } catch { /* The URL preserves refresh behavior. */ }
+    const next = workspaceNavigationUrl(window.location.href,state);
+    if (`${window.location.pathname}${window.location.search}${window.location.hash}` !== next) window.history.replaceState(window.history.state,'',next);
+  }, [navigationReady,activeModule,tab,initialKind,containerKind,standardCategory,oakView]);
 
   async function loadInitialBills(page = initialPage, pageSize = initialPageSize, force = false) {
     const requestId = initialLoadSeq.current + 1;
@@ -935,13 +949,14 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (activeModule !== "external" || tab !== "container") return;
+    if (!navigationReady || activeModule !== "external" || tab !== "container") return;
     const timeout = window.setTimeout(() => {
       void loadContainerProfits(containerPage, containerPageSize);
     }, 300);
     return () => window.clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    navigationReady,
     activeModule,
     tab,
     containerSearch,
@@ -955,7 +970,7 @@ export default function Home() {
   ]);
 
   useEffect(() => {
-    if (activeModule !== "external" || tab !== "initial") {
+    if (!navigationReady || activeModule !== "external" || tab !== "initial") {
       return;
     }
     const timeout = window.setTimeout(() => {
@@ -964,6 +979,7 @@ export default function Home() {
     return () => window.clearTimeout(timeout);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    navigationReady,
     activeModule,
     tab,
     initialPage,
@@ -1041,7 +1057,7 @@ export default function Home() {
   }, [containerProfitSummary]);
 
   const pageTitle =
-    activeModule === "sav"
+    !navigationReady ? "GNG价格核算" : activeModule === "sav"
       ? "SAV 单柜核算"
       : activeModule === "oak-transport"
       ? "OAK 运输部核算"
@@ -1053,7 +1069,7 @@ export default function Home() {
       ? `${expenseCategoryLabels[standardCategory]}标准`
       : "支出标准";
   const pageSubtitle =
-    activeModule === "sav"
+    !navigationReady ? "" : activeModule === "sav"
       ? "查询全部 SAV 订单柜号，按类型、客户及日期筛选，查看账单收入与运输核算依据"
       : activeModule === "oak-transport"
       ? ""
@@ -1361,7 +1377,7 @@ export default function Home() {
             <div className="nav-section-label">核算工作台</div>
             <button
               type="button"
-              className={`nav-item nav-module ${activeModule === "external" ? "active" : ""}`}
+              className={`nav-item nav-module ${navigationReady && activeModule === "external" ? "active" : ""}`}
               onClick={() => {
                 setExternalNavExpanded((expanded) => activeModule !== "external" || sidebarCollapsed || !expanded);
                 setActiveModule("external");
@@ -1376,7 +1392,7 @@ export default function Home() {
               <span className="nav-label">OAK 单柜核算</span>
               <span className="nav-parent-caret">{externalNavExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</span>
             </button>
-            {externalNavExpanded ? <div className="nav-module-content" id="external-accounting-nav">
+            {navigationReady && externalNavExpanded ? <div className="nav-module-content" id="external-accounting-nav">
             <button
               className={`nav-item nav-parent ${tab === "initial" ? "active" : ""}`}
               onClick={() => {
@@ -1477,14 +1493,14 @@ export default function Home() {
               ))}
             </div> : null}
             </div> : null}
-            <button type="button" className={`nav-item nav-module ${activeModule === "sav" ? "active" : ""}`}
+            <button type="button" className={`nav-item nav-module ${navigationReady && activeModule === "sav" ? "active" : ""}`}
               onClick={() => { setActiveModule("sav"); setExternalNavExpanded(false); setSelectedInitialRow(null); setSelectedContainerProfit(null); }}
               title="SAV 单柜核算" aria-label="SAV 单柜核算" aria-current={activeModule === "sav" ? "page" : undefined}>
               <span className="nav-icon"><Calculator size={18} /></span><span className="nav-label">SAV 单柜核算</span>
             </button>
             <button
               type="button"
-              className={`nav-item nav-module ${activeModule === "oak-transport" ? "active" : ""}`}
+              className={`nav-item nav-module ${navigationReady && activeModule === "oak-transport" ? "active" : ""}`}
               onClick={() => {
                 setActiveModule("oak-transport");
                 setExternalNavExpanded(false);
@@ -1505,11 +1521,11 @@ export default function Home() {
       <div className="content-shell">
         <header className="topbar">
           <div className="topbar-title">
-            {activeModule === "external" ? <><span className="topbar-module">OAK 单柜核算</span><ChevronRight size={14} aria-hidden="true" /></> : null}
+            {navigationReady && activeModule === "external" ? <><span className="topbar-module">OAK 单柜核算</span><ChevronRight size={14} aria-hidden="true" /></> : null}
             <span>{pageTitle}</span>
           </div>
           <div className="top-actions">
-            {activeModule === "external" && tab !== "fees" ? <button className="button ghost" onClick={() => void loadCurrentTab(true)} disabled={loading}>
+            {navigationReady && activeModule === "external" && tab !== "fees" ? <button className="button ghost" onClick={() => void loadCurrentTab(true)} disabled={loading}>
               <RefreshCw size={16} />
               刷新
             </button> : null}
@@ -1524,7 +1540,7 @@ export default function Home() {
           </div>
         </div>
 
-        {activeModule === "sav" ? <SavContainerAccounting /> : activeModule === "oak-transport" ? <OakTransportAccounting /> : <>
+        {!navigationReady ? <div className="muted" role="status">读取中...</div> : activeModule === "sav" ? <SavContainerAccounting /> : activeModule === "oak-transport" ? <OakTransportAccounting initialView={oakView} onViewChange={setOakView} /> : <>
         {tab === "fees" ? <OperatingStandards category={standardCategory} /> : null}
 
         {tab === "fees" ? null : tab === "initial" ? (

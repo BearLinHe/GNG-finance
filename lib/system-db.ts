@@ -183,7 +183,11 @@ async function ensureSystemSchemaOnce() {
   await withSystemClient(async (client) => {
     await client.query("begin");
     try {
-      await client.query(`
+      await client.query("select pg_advisory_xact_lock(19431,0)");
+      // Keep migration order and the transaction, without a network round trip per statement.
+      const statements: string[] = [];
+      const schemaQuery = (sql: string) => { statements.push(sql); };
+      schemaQuery(`
         create table if not exists container_bills (
           id bigserial primary key,
           source_order_id bigint not null unique,
@@ -211,14 +215,14 @@ async function ensureSystemSchemaOnce() {
           reviewed_at timestamptz
         )
       `);
-      await client.query("alter table container_bills add column if not exists order_date date");
-      await client.query("alter table container_bills add column if not exists pickup_date timestamptz");
-      await client.query("alter table container_bills add column if not exists return_deadline date");
-      await client.query("alter table container_bills add column if not exists operation_mode varchar(50)");
-      await client.query("alter table container_bills add column if not exists container_type varchar(50)");
-      await client.query("alter table container_bills add column if not exists matched_fee_names text");
-      await client.query("alter table container_bills add column if not exists matched_fee_count integer not null default 0");
-      await client.query(`
+      schemaQuery("alter table container_bills add column if not exists order_date date");
+      schemaQuery("alter table container_bills add column if not exists pickup_date timestamptz");
+      schemaQuery("alter table container_bills add column if not exists return_deadline date");
+      schemaQuery("alter table container_bills add column if not exists operation_mode varchar(50)");
+      schemaQuery("alter table container_bills add column if not exists container_type varchar(50)");
+      schemaQuery("alter table container_bills add column if not exists matched_fee_names text");
+      schemaQuery("alter table container_bills add column if not exists matched_fee_count integer not null default 0");
+      schemaQuery(`
         create table if not exists role_amount_records (
           id bigserial primary key,
           bill_id bigint not null references container_bills(id) on delete cascade,
@@ -232,7 +236,7 @@ async function ensureSystemSchemaOnce() {
           unique (bill_id, role_key)
         )
       `);
-      await client.query(`
+      schemaQuery(`
         create table if not exists fee_prices (
           id bigserial primary key,
           source_fee_id bigint unique,
@@ -255,12 +259,12 @@ async function ensureSystemSchemaOnce() {
           updated_at timestamptz not null default now()
         )
       `);
-      await client.query("alter table fee_prices add column if not exists source_origin varchar(30) not null default 'manual'");
-      await client.query("alter table fee_prices add column if not exists source_standard_id bigint");
-      await client.query("alter table fee_prices add column if not exists source_standard_price_id bigint");
-      await client.query("alter table fee_prices add column if not exists effective_date date");
-      await client.query("alter table fee_prices add column if not exists expiration_date date");
-      await client.query(`
+      schemaQuery("alter table fee_prices add column if not exists source_origin varchar(30) not null default 'manual'");
+      schemaQuery("alter table fee_prices add column if not exists source_standard_id bigint");
+      schemaQuery("alter table fee_prices add column if not exists source_standard_price_id bigint");
+      schemaQuery("alter table fee_prices add column if not exists effective_date date");
+      schemaQuery("alter table fee_prices add column if not exists expiration_date date");
+      schemaQuery(`
         create table if not exists container_role_amount_items (
           id bigserial primary key,
           source_order_id bigint not null,
@@ -275,15 +279,15 @@ async function ensureSystemSchemaOnce() {
           updated_at timestamptz not null default now()
         )
       `);
-      await client.query("alter table container_role_amount_items add column if not exists expense_category varchar(30)");
-      await client.query("alter table container_role_amount_items add column if not exists warehouse_point varchar(120)");
-      await client.query("alter table container_role_amount_items add column if not exists vendor_name varchar(200)");
-      await client.query("alter table container_role_amount_items add column if not exists expense_date date");
-      await client.query("alter table container_role_amount_items add column if not exists reference_number varchar(120)");
-      await client.query("alter table container_role_amount_items add column if not exists pricing_method varchar(30) not null default 'manual'");
-      await client.query("alter table container_role_amount_items add column if not exists standard_amount numeric(12, 2)");
-      await client.query("alter table container_role_amount_items add column if not exists pricing_rule_id bigint");
-      await client.query(`
+      schemaQuery("alter table container_role_amount_items add column if not exists expense_category varchar(30)");
+      schemaQuery("alter table container_role_amount_items add column if not exists warehouse_point varchar(120)");
+      schemaQuery("alter table container_role_amount_items add column if not exists vendor_name varchar(200)");
+      schemaQuery("alter table container_role_amount_items add column if not exists expense_date date");
+      schemaQuery("alter table container_role_amount_items add column if not exists reference_number varchar(120)");
+      schemaQuery("alter table container_role_amount_items add column if not exists pricing_method varchar(30) not null default 'manual'");
+      schemaQuery("alter table container_role_amount_items add column if not exists standard_amount numeric(12, 2)");
+      schemaQuery("alter table container_role_amount_items add column if not exists pricing_rule_id bigint");
+      schemaQuery(`
         create table if not exists transport_pricing_rules (
           id bigserial primary key,
           rule_code varchar(120) not null unique,
@@ -299,10 +303,10 @@ async function ensureSystemSchemaOnce() {
           updated_at timestamptz not null default now()
         )
       `);
-      await client.query("alter table transport_pricing_rules add column if not exists price_group varchar(50)");
-      await client.query("alter table transport_pricing_rules add column if not exists address text");
-      await client.query("alter table transport_pricing_rules add column if not exists condition_key varchar(60) not null default 'manual'");
-      await client.query(`
+      schemaQuery("alter table transport_pricing_rules add column if not exists price_group varchar(50)");
+      schemaQuery("alter table transport_pricing_rules add column if not exists address text");
+      schemaQuery("alter table transport_pricing_rules add column if not exists condition_key varchar(60) not null default 'manual'");
+      schemaQuery(`
         create table if not exists warehouse_pickup_pricing_rules (
           id bigserial primary key,
           rule_code varchar(120) not null unique,
@@ -317,7 +321,7 @@ async function ensureSystemSchemaOnce() {
           updated_at timestamptz not null default now()
         )
       `);
-      await client.query(`
+      schemaQuery(`
         create table if not exists expense_standards (
           id bigserial primary key,
           category varchar(30) not null,
@@ -337,10 +341,10 @@ async function ensureSystemSchemaOnce() {
           updated_at timestamptz not null default now()
         )
       `);
-      await client.query("alter table expense_standards add column if not exists operation_mode varchar(40)");
-      await client.query("alter table expense_standards add column if not exists period_start date");
-      await client.query("alter table expense_standards add column if not exists period_end date");
-      await client.query(`
+      schemaQuery("alter table expense_standards add column if not exists operation_mode varchar(40)");
+      schemaQuery("alter table expense_standards add column if not exists period_start date");
+      schemaQuery("alter table expense_standards add column if not exists period_end date");
+      schemaQuery(`
         insert into expense_standards (
           category, standard_kind, standard_name, amount, unit,
           application_rule, operation_mode, description
@@ -357,7 +361,7 @@ async function ensureSystemSchemaOnce() {
             and is_active = true
         )
       `);
-      await client.query(`
+      schemaQuery(`
         insert into expense_standards (
           category, standard_kind, standard_name, amount, unit,
           application_rule, operation_mode, description
@@ -375,7 +379,7 @@ async function ensureSystemSchemaOnce() {
             and is_active = true
         )
       `);
-      await client.query(`
+      schemaQuery(`
         insert into transport_pricing_rules (rule_code, rule_name, rule_type, warehouse_point, amount, condition_key)
         values
           ('OAK_TERMINAL_PICKUP', '奥克兰码头提柜', 'fixed_route', '奥克兰码头', 60, 'pickup_out'),
@@ -391,7 +395,7 @@ async function ensureSystemSchemaOnce() {
             is_active = true,
             updated_at = now()
       `);
-      await client.query(`
+      schemaQuery(`
         insert into transport_pricing_rules (
           rule_code, rule_name, rule_type, warehouse_point, price_group, address, amount, condition_key
         ) values
@@ -431,7 +435,7 @@ async function ensureSystemSchemaOnce() {
             is_active = true,
             updated_at = now()
       `);
-      await client.query(`
+      schemaQuery(`
         insert into warehouse_pickup_pricing_rules (
           rule_code, rule_name, warehouse_point, price_group, address, amount, is_temporary
         )
@@ -449,27 +453,27 @@ async function ensureSystemSchemaOnce() {
           and warehouse_point is not null
         on conflict (rule_code) do nothing
       `);
-      await client.query("create index if not exists idx_container_bills_status on container_bills(status)");
-      await client.query("create index if not exists idx_container_bills_container_number on container_bills(container_number)");
-      await client.query("create index if not exists idx_container_bills_operation_mode on container_bills(operation_mode)");
-      await client.query("create index if not exists idx_container_bills_order_date on container_bills(order_date)");
-      await client.query("create index if not exists idx_role_amount_records_bill on role_amount_records(bill_id)");
-      await client.query("create index if not exists idx_fee_prices_active on fee_prices(is_active)");
-      await client.query("create index if not exists idx_fee_prices_code on fee_prices(fee_code)");
-      await client.query("create index if not exists idx_fee_prices_scope on fee_prices(scope_type)");
-      await client.query("create index if not exists idx_fee_prices_source_origin on fee_prices(source_origin)");
-      await client.query("create unique index if not exists idx_fee_prices_source_standard_price on fee_prices(source_standard_price_id) where source_standard_price_id is not null");
-      await client.query("create index if not exists idx_container_role_amount_items_order on container_role_amount_items(source_order_id)");
-      await client.query("create index if not exists idx_container_role_amount_items_container on container_role_amount_items(container_number)");
-      await client.query("create index if not exists idx_container_role_amount_items_role on container_role_amount_items(role_key)");
-      await client.query("create index if not exists idx_container_role_amount_items_category on container_role_amount_items(expense_category)");
-      await client.query("create index if not exists idx_container_role_amount_items_expense_date on container_role_amount_items(expense_date)");
-      await client.query("create index if not exists idx_transport_pricing_rules_type on transport_pricing_rules(rule_type)");
-      await client.query("create index if not exists idx_transport_pricing_rules_warehouse on transport_pricing_rules(warehouse_point)");
-      await client.query("create index if not exists idx_warehouse_pickup_pricing_warehouse on warehouse_pickup_pricing_rules(warehouse_point)");
-      await client.query("create index if not exists idx_expense_standards_category_kind on expense_standards(category, standard_kind)");
-      await client.query("create index if not exists idx_expense_standards_month on expense_standards(billing_month)");
-      await client.query(`
+      schemaQuery("create index if not exists idx_container_bills_status on container_bills(status)");
+      schemaQuery("create index if not exists idx_container_bills_container_number on container_bills(container_number)");
+      schemaQuery("create index if not exists idx_container_bills_operation_mode on container_bills(operation_mode)");
+      schemaQuery("create index if not exists idx_container_bills_order_date on container_bills(order_date)");
+      schemaQuery("create index if not exists idx_role_amount_records_bill on role_amount_records(bill_id)");
+      schemaQuery("create index if not exists idx_fee_prices_active on fee_prices(is_active)");
+      schemaQuery("create index if not exists idx_fee_prices_code on fee_prices(fee_code)");
+      schemaQuery("create index if not exists idx_fee_prices_scope on fee_prices(scope_type)");
+      schemaQuery("create index if not exists idx_fee_prices_source_origin on fee_prices(source_origin)");
+      schemaQuery("create unique index if not exists idx_fee_prices_source_standard_price on fee_prices(source_standard_price_id) where source_standard_price_id is not null");
+      schemaQuery("create index if not exists idx_container_role_amount_items_order on container_role_amount_items(source_order_id)");
+      schemaQuery("create index if not exists idx_container_role_amount_items_container on container_role_amount_items(container_number)");
+      schemaQuery("create index if not exists idx_container_role_amount_items_role on container_role_amount_items(role_key)");
+      schemaQuery("create index if not exists idx_container_role_amount_items_category on container_role_amount_items(expense_category)");
+      schemaQuery("create index if not exists idx_container_role_amount_items_expense_date on container_role_amount_items(expense_date)");
+      schemaQuery("create index if not exists idx_transport_pricing_rules_type on transport_pricing_rules(rule_type)");
+      schemaQuery("create index if not exists idx_transport_pricing_rules_warehouse on transport_pricing_rules(warehouse_point)");
+      schemaQuery("create index if not exists idx_warehouse_pickup_pricing_warehouse on warehouse_pickup_pricing_rules(warehouse_point)");
+      schemaQuery("create index if not exists idx_expense_standards_category_kind on expense_standards(category, standard_kind)");
+      schemaQuery("create index if not exists idx_expense_standards_month on expense_standards(billing_month)");
+      schemaQuery(`
         create table if not exists oak_driver_imports (
           id bigserial primary key,
           file_hash varchar(64) not null unique,
@@ -477,9 +481,9 @@ async function ensureSystemSchemaOnce() {
           created_at timestamptz not null default now()
         )
       `);
-      await client.query("alter table oak_driver_imports add column if not exists period_from date");
-      await client.query("alter table oak_driver_imports add column if not exists period_to date");
-      await client.query(`
+      schemaQuery("alter table oak_driver_imports add column if not exists period_from date");
+      schemaQuery("alter table oak_driver_imports add column if not exists period_to date");
+      schemaQuery(`
         create table if not exists oak_driver_tasks (
           id bigserial primary key,
           import_id bigint not null references oak_driver_imports(id) on delete cascade,
@@ -498,10 +502,10 @@ async function ensureSystemSchemaOnce() {
           unique (import_id, sheet_name, section, source_row)
         )
       `);
-      await client.query("create index if not exists idx_oak_driver_tasks_date_driver on oak_driver_tasks(work_date, driver_name)");
-      await client.query("create index if not exists idx_oak_driver_tasks_import on oak_driver_tasks(import_id)");
-      await client.query("alter table oak_driver_tasks add column if not exists payee_type varchar(20) check(payee_type in ('driver','owner'))");
-      await client.query(`
+      schemaQuery("create index if not exists idx_oak_driver_tasks_date_driver on oak_driver_tasks(work_date, driver_name)");
+      schemaQuery("create index if not exists idx_oak_driver_tasks_import on oak_driver_tasks(import_id)");
+      schemaQuery("alter table oak_driver_tasks add column if not exists payee_type varchar(20) check(payee_type in ('driver','owner'))");
+      schemaQuery(`
         create table if not exists oak_income_rules (
           id bigserial primary key,
           name varchar(120) not null,
@@ -515,7 +519,7 @@ async function ensureSystemSchemaOnce() {
           check (valid_from is null or valid_to is null or valid_from <= valid_to)
         )
       `);
-      await client.query(`
+      schemaQuery(`
         create table if not exists oak_task_income_reviews (
           task_id bigint primary key references oak_driver_tasks(id) on delete cascade,
           mode varchar(20) not null check (mode in ('label', 'manual', 'included')),
@@ -528,8 +532,8 @@ async function ensureSystemSchemaOnce() {
             or (mode = 'label' and work_label is not null and amount is null and included_task_id is null))
         )
       `);
-      await client.query("create index if not exists idx_oak_income_reviews_anchor on oak_task_income_reviews(included_task_id)");
-      await client.query(`create table if not exists oak_weekly_settlements (
+      schemaQuery("create index if not exists idx_oak_income_reviews_anchor on oak_task_income_reviews(included_task_id)");
+      schemaQuery(`create table if not exists oak_weekly_settlements (
         id bigserial primary key, subject varchar(120) not null, week_start date not null, week_end date not null,
         payee_name varchar(150) not null, payee_type varchar(20) not null check(payee_type in ('driver','owner')),
         base_amount numeric(12,2) not null check(base_amount >= 0), adjustments jsonb not null default '[]',
@@ -539,24 +543,24 @@ async function ensureSystemSchemaOnce() {
         updated_at timestamptz not null default now(), unique(subject,week_start),
         check(extract(dow from week_start)=6 and week_end=week_start+6)
       )`);
-      await client.query(`create table if not exists oak_settlement_tasks (
+      schemaQuery(`create table if not exists oak_settlement_tasks (
         settlement_id bigint not null references oak_weekly_settlements(id) on delete cascade,
         task_id bigint not null unique references oak_driver_tasks(id) on delete restrict,
         primary key(settlement_id,task_id)
       )`);
-      await client.query(`create table if not exists oak_settlement_payments (
+      schemaQuery(`create table if not exists oak_settlement_payments (
         id bigserial primary key, settlement_id bigint not null references oak_weekly_settlements(id) on delete restrict,
         amount numeric(12,2) not null check(amount>0), payment_date date not null, reference varchar(200) not null,
         note varchar(1000) not null default '', voided_at timestamptz, void_reason varchar(1000),
         created_at timestamptz not null default now()
       )`);
-      await client.query("create index if not exists idx_oak_settlement_payments_parent on oak_settlement_payments(settlement_id)");
-      await client.query(`create table if not exists oak_workflow_audit (
+      schemaQuery("create index if not exists idx_oak_settlement_payments_parent on oak_settlement_payments(settlement_id)");
+      schemaQuery(`create table if not exists oak_workflow_audit (
         id bigserial primary key, entity_kind varchar(30) not null, entity_id bigint not null,
         event varchar(60) not null, details jsonb not null default '{}', created_at timestamptz not null default now()
       )`);
-      await client.query("create index if not exists idx_oak_workflow_audit_entity on oak_workflow_audit(entity_kind,entity_id,id)");
-      await client.query(`create table if not exists oak_period_cost_reviews (
+      schemaQuery("create index if not exists idx_oak_workflow_audit_entity on oak_workflow_audit(entity_kind,entity_id,id)");
+      schemaQuery(`create table if not exists oak_period_cost_reviews (
         id bigserial primary key, subject varchar(120) not null, date_from date not null, date_to date not null,
         import_id bigint not null default 0 check(import_id >= 0),
         payee_type varchar(20) not null check(payee_type in ('driver','owner')),
@@ -567,6 +571,44 @@ async function ensureSystemSchemaOnce() {
         unique(subject,date_from,date_to,import_id), check(date_from <= date_to),
         check((labor_mode='manual' and labor_amount is not null) or (labor_mode='settlements' and labor_amount is null))
       )`);
+      schemaQuery(`create table if not exists oak_vehicles (
+        id varchar(60) primary key, vehicle_number varchar(30), driver_name varchar(120) not null,
+        aliases jsonb not null default '[]', version integer not null default 1,
+        updated_at timestamptz not null default now(), unique(vehicle_number)
+      )`);
+      schemaQuery(`create table if not exists oak_vehicle_accounting (
+        id bigserial primary key, vehicle_id varchar(60) not null references oak_vehicles(id),
+        date_from date not null, date_to date not null, payee_type varchar(20) not null check(payee_type in ('driver','owner')),
+        entries jsonb not null, other_expenses jsonb not null default '[]', note varchar(1000) not null default '',
+        source_hash varchar(64) not null, task_ids jsonb not null,
+        version integer not null default 1, updated_at timestamptz not null default now(),
+        unique(vehicle_id,date_from,date_to), check(date_from<=date_to)
+      )`);
+      schemaQuery("alter table oak_vehicle_accounting add column if not exists amounts_migrated boolean not null default false");
+      schemaQuery(`create table if not exists oak_vehicle_amounts (
+        id bigserial primary key, vehicle_id varchar(60) not null references oak_vehicles(id),
+        category varchar(20) not null check(category in ('maintenance','labor','insurance','income','fuel','other')),
+        date_from date not null,date_to date not null,amount numeric(12,2) not null check(amount>=0),
+        payee_type varchar(20) check(payee_type in ('driver','owner')),note varchar(1000) not null default '',
+        request_key varchar(80) not null unique,version integer not null default 1,
+        source_review_id bigint references oak_vehicle_accounting(id) on delete set null,source_field varchar(20),
+        voided_at timestamptz,updated_at timestamptz not null default now(),
+        unique(source_review_id,source_field),check(date_from<=date_to),check(category<>'labor' or payee_type is not null)
+      )`);
+      schemaQuery("create index if not exists idx_oak_vehicle_amounts_range on oak_vehicle_amounts(vehicle_id,category,date_from,date_to) where voided_at is null");
+      schemaQuery("alter table oak_vehicle_amounts add column if not exists payroll_source jsonb");
+      schemaQuery(`insert into oak_vehicle_amounts(vehicle_id,category,date_from,date_to,amount,payee_type,note,request_key,source_review_id,source_field)
+        select a.vehicle_id,e.key,a.date_from,a.date_to,(e.value->>'amount')::numeric,
+          case when e.key='labor' then a.payee_type end,a.note,'review-'||a.id||'-'||e.key,a.id,e.key
+        from oak_vehicle_accounting a cross join lateral jsonb_each(a.entries) e
+        where not a.amounts_migrated and e.value->>'mode'='manual' and jsonb_typeof(e.value->'amount')='number'
+        on conflict do nothing`);
+      schemaQuery(`insert into oak_vehicle_amounts(vehicle_id,category,date_from,date_to,amount,note,request_key,source_review_id,source_field)
+        select a.vehicle_id,'other',a.date_from,a.date_to,(select sum((e->>'amount')::numeric) from jsonb_array_elements(a.other_expenses) e),
+          a.note,'review-'||a.id||'-other',a.id,'other' from oak_vehicle_accounting a
+        where not a.amounts_migrated and jsonb_array_length(a.other_expenses)>0 on conflict do nothing`);
+      schemaQuery("update oak_vehicle_accounting set amounts_migrated=true where not amounts_migrated");
+      await client.query(statements.join(";\n"));
       await client.query("commit");
     } catch (error) {
       await client.query("rollback");

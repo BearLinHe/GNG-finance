@@ -45,7 +45,7 @@ export async function savePeriodCosts(value: unknown) {
       const tasks = await scopeTasks(client, input);
       if (!tasks.length || hashTasks(tasks) !== input.taskHash) throw new IncomeInputError("作业范围已变化，请关闭并刷新后重新核对成本");
       const identity = summarizePayeeTypes(tasks);
-      if (identity.conflict || (identity.type && identity.type !== input.payeeType)) throw new IncomeInputError("结算身份不一致，不能混用司机工资与车主价格");
+      if (identity.conflict || (identity.type && identity.type !== input.payeeType)) throw new IncomeInputError("结算身份不一致，不能混用司机工资与车主工资");
       const current = await client.query(`select id,version from oak_period_cost_reviews where subject=$1 and date_from=$2::date and date_to=$3::date and import_id=$4 for update`, [input.subject, input.dateFrom, input.dateTo, input.importId || 0]);
       if (Number(current.rows[0]?.version || 0) !== input.version) throw new IncomeInputError("成本已被其他操作更新，请刷新后重试");
       const values = [input.subject, input.dateFrom, input.dateTo, input.importId || 0, input.payeeType, input.laborMode, input.laborAmount,
