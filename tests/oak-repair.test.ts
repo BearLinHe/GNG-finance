@@ -73,6 +73,41 @@ test('plain, Truck and CA Truck aliases use the same exact key without losing le
  assert.notEqual(repairUnitKey('Truck 608'),repairUnitKey('Truck 0608'));
  assert.deepEqual(repairUnitAliases(null),[]);
 });
+test('the known owner annotation matches 0608 without changing its source label, amount or date',()=>{
+ const truck=oakVehicleSeeds.find(item=>item.vehicleNumber==='0608')!;
+ for(const label of ['CA Truck 0608（车主）','CA Truck 0608 (车主)','Truck 0608(车主)','0608（车主）',' ca  truck\t0608 （车主） ']){
+  const result=normalizeRepairInvoices([truck],[{unit_number:label}],[invoice({unit_number:label,invoice_number:'2026100167792158',grand_total_cents:22000,completed_ms:Date.parse('2026-10-01T22:14:34.188Z')})]);
+  assert.equal(repairUnitKey(label),'0608',label);assert.deepEqual(result.status.matchedVehicleIds,[truck.id]);
+  assert.equal(result.records.length,1);assert.equal(result.records[0].vehicleId,truck.id);
+  assert.equal(result.records[0].amount,220);assert.equal(result.records[0].dateFrom,'2026-10-01');
+  assert.equal(result.records[0].repair?.unitNumber,label);
+ }
+});
+test('owner annotations do not broaden matching to other states, equipment, numbers or unknown suffixes',()=>{
+ const truck=oakVehicleSeeds.find(item=>item.vehicleNumber==='0608')!;
+ for(const label of ['CA Truck 608（车主）','GA Truck 0608（车主）','CA Trailer 0608（车主）','CA Chassis 0608（车主）','Customer 0608（车主）','CA Truck 0608（其他）','CA Truck 0608（车主） extra','CA Truck 0608（车主维修）']){
+  const result=normalizeRepairInvoices([truck],[{unit_number:label}],[invoice({unit_number:label})]);
+  assert.equal(result.records.length,0,label);assert.deepEqual(result.status.matchedVehicleIds,[],label);
+ }
+ const label='CA Truck 0608（车主）';
+ for(const owner of excludedRepairOwnerIds){
+  const result=normalizeRepairInvoices([truck],[{unit_number:label,clerk_user_id:owner}],[invoice({unit_number:label,clerk_user_id:owner,invoice_owner_id:owner})]);
+  assert.equal(result.records.length,0);assert.deepEqual(result.status.matchedVehicleIds,[]);
+ }
+ const ambiguous=normalizeRepairInvoices([truck,{...truck,id:'duplicate'}],[{unit_number:label}],[invoice({unit_number:label})]);
+ assert.equal(ambiguous.records.length,0);assert.deepEqual(ambiguous.status.matchedVehicleIds,[]);
+});
+test('matching an owner-labelled repair does not override driver versus owner cost accounting',()=>{
+ const truck=oakVehicleSeeds.find(item=>item.vehicleNumber==='0608')!,label='CA Truck 0608（车主）',range={dateFrom:'2026-10-01',dateTo:'2026-10-31'};
+ const source=normalizeRepairInvoices([truck],[{unit_number:label}],[invoice({unit_number:label,grand_total_cents:22000,completed_ms:Date.parse('2026-10-01T22:14:34.188Z')})]);
+ const wage:VehicleAmount={id:'1',vehicleId:truck.id,category:'labor',...range,amount:100,payeeType:'driver',note:'',version:1,requestKey:'test-wage',sourceReviewId:null,updatedAt:date};
+ const driver=calculateDatedVehicleAccounting(truck,range,[],[],null,'hash',[...source.records,wage],source.status);
+ assert.equal(driver.lines.maintenance.amount,220);assert.ok(!driver.lines.maintenance.notApplicable);
+ const owner=calculateDatedVehicleAccounting(truck,range,[],[],null,'hash',[...source.records,{...wage,payeeType:'owner'}],source.status);
+ assert.equal(owner.lines.maintenance.amount,0);assert.equal(owner.lines.maintenance.notApplicable,true);
+ assert.equal(owner.lines.insurance.amount,0);assert.equal(owner.amounts?.filter(item=>item.source==='repair').length,1);
+ assert.equal(calculateDatedVehicleAccounting(truck,{dateFrom:'2026-10-02',dateTo:'2026-10-31'},[],[],null,'hash',source.records,source.status).lines.maintenance.amount,0);
+});
 test('GA trucks, trailers, chassis and unrelated customer labels cannot cross-match the OAK roster',()=>{
  const zero=oakVehicleSeeds.find(item=>item.vehicleNumber==='007')!;
  for(const unit of ['GA Truck 007','CA Trailer 007','CA Chassis 007','Other Truck 007','CA Truck 7','CA Truck 007 extra','Customer 007']){

@@ -10,15 +10,16 @@ import VehicleRow from "./oak-vehicle-summary-row";
 import {tableDrag,useResponsiveTableSizing,useTableOrder} from "./oak-table-layout";
 import {moveTableItem} from "@/lib/oak-table-order";
 import {createAsyncReadCache} from "@/lib/async-read-cache";
+import {vehicleTotalsPreview} from '@/lib/oak-vehicle-totals';
 
 const accountingReads = createAsyncReadCache<VehicleAccountingResponse>({ttlMs:0});
 
 function exportRows(rows: VehicleAccountingRow[], view: VehicleAccountingView) {
   const cell = (value: unknown) => `"${(typeof value === "number" ? String(value) : String(value ?? "").replace(/^[\s]*[=+@-]/, "'$&")).replace(/"/g, '""')}"`;
   const wageView=view==='vehicles'||view==='labor';
-  const header = ["车辆号码", "司机名字", "计算起始日期", "计算结束日期", ...(view === "vehicles" ? ["维修费", "司机工资/车主工资（已入账）", "车辆保险", "车辆收入", "周期油费", "其他费用", "周期总花费", "周期盈亏"] : [vehicleViewLabels[view]]),...(wageView?['工资核对状态']:[])];
+  const header = ["车辆号码", "司机名字", "计算起始日期", "计算结束日期", ...(view === "vehicles" ? ["维修费", "司机工资/车主工资（已入账）", "车辆保险", "车辆收入", "周期油费", "其他费用", "周期总花费", "周期盈亏"] : [vehicleViewLabels[view]]),...(wageView?['工资核对状态']:[]),...(view==='vehicles'?['已知支出合计','暂算盈亏','核算状态']:[])];
   const data = rows.map(row => [row.vehicle.vehicleNumber, row.vehicle.driverName, row.dateFrom, row.dateTo, ...(view === "vehicles" ? [row.lines.maintenance.amount, row.lines.labor.amount??row.lines.labor.knownAmount,
-    row.lines.insurance.amount, row.lines.income.amount, row.lines.fuel.amount, row.otherAmount, row.totalCost, row.net] : [row.lines[view].amount??(view==='labor'?row.lines.labor.knownAmount:undefined)]),...(wageView?[row.lines.labor.amount==null?row.lines.labor.pendingReason||'待核对':'已核对']:[])]);
+    row.lines.insurance.amount, row.lines.income.amount, row.lines.fuel.amount, row.otherAmount, row.totalCost, row.net] : [row.lines[view].amount??(view==='labor'?row.lines.labor.knownAmount:undefined)]),...(wageView?[row.lines.labor.amount==null?row.lines.labor.pendingReason||'待核对':'已核对']:[]),...(view==='vehicles'?[vehicleTotalsPreview(row.lines,row.otherAmount).knownCost,row.net==null?vehicleTotalsPreview(row.lines,row.otherAmount).provisionalNet:null,row.net!=null?'已核对':`待核对${vehicleTotalsPreview(row.lines,row.otherAmount).pendingCosts?`：${vehicleTotalsPreview(row.lines,row.otherAmount).pendingCosts}`:''}`]:[])]);
   const url = URL.createObjectURL(new Blob(["\uFEFF", [header, ...data].map(row => row.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = `OAK-${vehicleViewLabels[view]}.csv`; anchor.click(); URL.revokeObjectURL(url);
 }
@@ -69,14 +70,15 @@ export default forwardRef<VehicleSummaryHandle,Props>(function OakVehicleAccount
   const columns=useMemo<ColumnDef<VehicleAccountingRow>[]>(()=>{
     const rows=data?.rows||[];
     const numberMinimum=(field:VehicleField,minimum:number)=>Math.max(minimum,...rows.map(row=>{const value=row.lines[field].amount??row.lines[field].knownAmount;return value==null?0:Math.ceil(value.toFixed(2).length*8+24);}));
-    const resultMinimum=(field:'totalCost'|'net',minimum:number)=>Math.max(minimum,...rows.map(row=>row[field]==null?0:incomeMoney(row[field]!).length*8+16));
+    const resultValue=(row:VehicleAccountingRow,field:'totalCost'|'net')=>row[field]??vehicleTotalsPreview(row.lines,row.otherAmount)[field==='totalCost'?'knownCost':'provisionalNet'];
+    const resultMinimum=(field:'totalCost'|'net',minimum:number)=>Math.max(minimum,...rows.map(row=>resultValue(row,field)==null?0:incomeMoney(resultValue(row,field)!).length*8+16));
     const vehicleMinimum=Math.max(84,...rows.map(row=>(row.vehicle.vehicleNumber?.length||0)*8+46));
     return [
     {id:'vehicle',header:'车号',size:Math.max(90,vehicleMinimum),minSize:vehicleMinimum,accessorFn:row=>row.vehicle.vehicleNumber,sortingFn:'alphanumeric'},
     {id:'driver',header:'司机',size:120,minSize:84,accessorFn:row=>row.vehicle.driverName},
     {id:'dateFrom',header:'核算开始',size:140,minSize:110,accessorKey:'dateFrom'}, {id:'dateTo',header:'核算结束',size:140,minSize:110,accessorKey:'dateTo'},
     ...(['maintenance','labor','insurance','income','fuel'] as VehicleField[]).map(key=>{const minSize=numberMinimum(key,key==='labor'?108:key==='income'?92:84);return {id:key,header:key==='labor'?'司机 / 车主工资':vehicleViewLabels[key as Exclude<VehicleAccountingView,'vehicles'>],size:Math.max(key==='labor'?125:110,minSize),minSize,accessorFn:(row:VehicleAccountingRow)=>row.lines[key].amount};}),
-    {id:'other',header:'其他费用',size:100,minSize:Math.max(84,...rows.map(row=>row.otherAmount.toFixed(2).length*8+24)),accessorKey:'otherAmount'},{id:'cost',header:'总支出',size:120,minSize:resultMinimum('totalCost',96),accessorKey:'totalCost'},{id:'net',header:'净盈亏',size:130,minSize:resultMinimum('net',104),accessorKey:'net'},{id:'actions',header:'保存状态',size:85,minSize:68,enableSorting:false}
+    {id:'other',header:'其他费用',size:100,minSize:Math.max(84,...rows.map(row=>row.otherAmount.toFixed(2).length*8+24)),accessorKey:'otherAmount'},{id:'cost',header:'总支出',size:120,minSize:resultMinimum('totalCost',96),accessorFn:row=>resultValue(row,'totalCost')},{id:'net',header:'净盈亏',size:130,minSize:resultMinimum('net',104),accessorFn:row=>resultValue(row,'net')},{id:'actions',header:'保存状态',size:85,minSize:68,enableSorting:false}
   ];},[data?.rows]);
   const columnLayout=useTableOrder('oak-main-columns',columns.map(column=>column.id!));
   const rowLayout=useTableOrder('oak-main-rows',data?.rows.map(row=>row.vehicle.id)||[]);

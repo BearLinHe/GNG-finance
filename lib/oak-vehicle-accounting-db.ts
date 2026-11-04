@@ -14,6 +14,7 @@ import { readVehicleAmounts } from "./oak-vehicle-amounts-db";
 import { calculateDatedVehicleAccounting, type VehicleAmount, type VehicleAmountCategory } from "./oak-vehicle-amounts";
 import {readRepairFeed} from './oak-repair-db';
 import {incomeActivityGaps} from './oak-income-coverage';
+import {readFuelMileage} from './oak-fuel-db';
 
 function reviewFromRow(row: Record<string, unknown>): VehicleAccountingReview {
   return { vehicleId: String(row.vehicle_id), dateFrom: String(row.date_from), dateTo: String(row.date_to),
@@ -60,7 +61,9 @@ async function readAccounting(client: PoolClient, query: AccountingQuery, freshR
     from oak_weekly_settlements s where s.status='confirmed' and s.week_start<=$2::date and s.week_end>=$1::date`, [from, to])).rows as ProfitSettlement[];
   const taskRows = new Map<string, DriverTask[]>();
   const repairFeed=await repairPromise;
-  const amountRows = [...await readVehicleAmounts(client, {dateFrom:from,dateTo:to}),...repairFeed.records.filter(item=>item.dateFrom<=to&&item.dateTo>=from)];
+  const ledgerAmounts=await readVehicleAmounts(client, {dateFrom:from,dateTo:to});
+  const fuelMileage=await readFuelMileage(client,vehicles,ledgerAmounts);
+  const amountRows = [...ledgerAmounts,...repairFeed.records.filter(item=>item.dateFrom<=to&&item.dateTo>=from)];
   const rows = selected.map(vehicle => {
     const range = ranges.get(vehicle.id)!;
     const scoped = rated.filter(task => task.workDate >= range.dateFrom && task.workDate <= range.dateTo && vehicleIdFor(task.driverName) === vehicle.id);
@@ -68,9 +71,9 @@ async function readAccounting(client: PoolClient, query: AccountingQuery, freshR
     const vehicleAmounts = amountRows.filter(item=>item.vehicleId===vehicle.id && item.dateFrom<=range.dateTo && item.dateTo>=range.dateFrom);
     const vehicleSettlements = settlements.filter(item=>vehicleIdFor(item.subject)===vehicle.id);
     const sourceHash = createHash("sha256").update(JSON.stringify([vehicle, range, profitTaskSignature(scoped),
-      scoped.map(task => [task.id, task.income]), vehicleSettlements, vehicleAmounts,incomeActivityGaps(vehicleAmounts,imports.map(item=>({fileHash:item.file_hash,sheetNames:item.sheet_names})),range)])).digest("hex");
+      scoped.map(task => [task.id, task.income]), vehicleSettlements, vehicleAmounts,fuelMileage[vehicle.id],incomeActivityGaps(vehicleAmounts,imports.map(item=>({fileHash:item.file_hash,sheetNames:item.sheet_names})),range)])).digest("hex");
     const review = allReviews.find(item => item.vehicleId === vehicle.id && item.dateFrom === range.dateFrom && item.dateTo === range.dateTo) || null;
-    const row = calculateDatedVehicleAccounting(vehicle, range, scoped, vehicleSettlements, review, sourceHash, vehicleAmounts,repairFeed.status,imports.map(item=>({fileHash:item.file_hash,sheetNames:item.sheet_names})));
+    const row = calculateDatedVehicleAccounting(vehicle, range, scoped, vehicleSettlements, review, sourceHash, vehicleAmounts,repairFeed.status,imports.map(item=>({fileHash:item.file_hash,sheetNames:item.sheet_names})),fuelMileage[vehicle.id]);
     row.history = allReviews.filter(item => item.vehicleId === vehicle.id).map(item => ({ dateFrom: item.dateFrom, dateTo: item.dateTo }));
     return row;
   });

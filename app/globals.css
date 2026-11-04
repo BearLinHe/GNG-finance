@@ -1296,6 +1296,8 @@ button {
 .oak-inline-partial > small { display:block;margin-top:3px;color:#94631b;text-align:right;font-size:10px;line-height:1.4; }
 .oak-inline-total small, .oak-inline-save small { display: block; margin-top: 4px; font-size: 10px; font-weight: 400; overflow-wrap: anywhere; }
 .oak-inline-total small { color: var(--muted); }
+.oak-stan-table td.oak-inline-provisional { background:#fff7e8;color:#94631b; }
+.oak-inline-provisional small { color:#94631b;line-height:1.4; }
 .oak-inline-dirty > td { background: #fffef5; }
 .oak-inline-dirty > td:first-child { background: #fffef5; }
 .oak-inline-save { text-align: center; }

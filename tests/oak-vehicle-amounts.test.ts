@@ -7,10 +7,10 @@ import type {ProfitSettlement} from "../lib/oak-period-profit";
 const vehicle=oakVehicleSeeds[4];const range={dateFrom:"2026-10-03",dateTo:"2026-10-09"};
 const record=(category:VehicleAmount['category'],amount:number,dates={dateFrom:"2026-10-01",dateTo:"2026-10-31"}):VehicleAmount=>({id:category,vehicleId:vehicle.id,category,amount,...dates,note:"test",payeeType:category==='labor'?'driver':null,version:1,requestKey:`request-${category}`,sourceReviewId:null,updatedAt:"2026-11-02"});
 const task=(id="1",date="2026-10-03"):DriverTask=>({id,driverName:vehicle.driverName,sheetName:vehicle.driverName,section:"海柜",payeeType:"driver",sourceRow:3,workDate:date,reference:"QA",nature:"TCY1",fromLocation:"SFO",toLocation:"STK",miles:68,notes:null,rawCells:{},income:{status:"priced",source:"manual",workLabel:"TCY1",amount:1000,basis:"manual",billingBasis:"trip",ruleId:null,includedTaskId:null,review:null}});
-test("all expense and revenue categories allocate the inclusive overlapping days",()=>{
- const result=allocateVehicleAmount(record('fuel',3100),range);assert.deepEqual(result,{allocatedAmount:700,overlapDays:7,totalDays:31});
- assert.equal(allocateVehicleAmount(record('fuel',3100),{dateFrom:"2026-09-01",dateTo:"2026-09-30"}).allocatedAmount,0);
- assert.equal(allocateVehicleAmount(record('fuel',3100),{dateFrom:"2026-10-31",dateTo:"2026-11-01"}).allocatedAmount,100);
+test("non-fuel expense and revenue categories allocate the inclusive overlapping days",()=>{
+ const result=allocateVehicleAmount(record('insurance',3100),range);assert.deepEqual(result,{allocatedAmount:700,overlapDays:7,totalDays:31});
+ assert.equal(allocateVehicleAmount(record('insurance',3100),{dateFrom:"2026-09-01",dateTo:"2026-09-30"}).allocatedAmount,0);
+ assert.equal(allocateVehicleAmount(record('insurance',3100),{dateFrom:"2026-10-31",dateTo:"2026-11-01"}).allocatedAmount,100);
 });
 test("cent allocation reconciles across adjacent periods instead of multiplying rounding errors",()=>{
  const source={amount:100,dateFrom:"2026-10-01",dateTo:"2026-10-03"};
@@ -23,7 +23,8 @@ test("leap days and cross-year ranges allocate by UTC calendar days",()=>{
 });
 test("main table sums independently dated amounts for each category",()=>{
  const records=[record('income',6200),record('labor',3100),record('fuel',620),record('maintenance',310),record('insurance',310),record('other',310)];
- const result=calculateDatedVehicleAccounting(vehicle,range,[],[],null,'hash',records);
+ const mileage={coverage:[{dateFrom:'2026-10-01',dateTo:'2026-10-31'}],gaps:[],days:Array.from({length:31},(_,i)=>({workDate:`2026-10-${String(i+1).padStart(2,'0')}`,miles:100}))};
+ const result=calculateDatedVehicleAccounting(vehicle,range,[],[],null,'hash',records,undefined,undefined,mileage);
  assert.equal(result.lines.income.amount,1400);assert.equal(result.lines.labor.amount,700);assert.equal(result.lines.fuel.amount,140);
  assert.equal(result.totalCost,1050);assert.equal(result.net,350);assert.equal(result.amounts?.length,6);
 });

@@ -11,7 +11,8 @@ export type RepairFeed={records:VehicleAmount[];status:RepairFeedStatus};
 export const excludedRepairOwnerIds=['user_3AVAzLh7mYN2WocTWCeJumCpsrB','45b19a33-1304-431d-8234-1895106b2400'];
 const isExcludedRepairOwner=(value:unknown)=>typeof value==='string'&&excludedRepairOwnerIds.includes(value);
 export function repairUnitKey(value:unknown){
- const key=typeof value==='string'?value.normalize('NFKC').trim().toUpperCase().replace(/\s+/g,' '):'';
+ const key=typeof value==='string'?value.normalize('NFKC').trim().toUpperCase().replace(/\s+/g,' ').replace(/ *\(车主\)$/,''):'';
+ // The known owner suffix is a source label, not an instruction to change accounting ownership.
  // Legacy Truck labels and California trucks use the roster number; keep GA/trailer/chassis distinct.
  return /^(?:CA )?TRUCK ([A-Z0-9]+)$/.exec(key)?.[1]||key;
 }

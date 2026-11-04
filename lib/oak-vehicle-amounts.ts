@@ -7,6 +7,7 @@ import { taskPayeeType, type PayeeType } from "./oak-payee";
 import type {RepairDetails,RepairFeedStatus} from './oak-repair';
 import type { PayrollSource } from './oak-payroll';
 import {incomeActivityGaps} from './oak-income-coverage';
+import {allocateFuelAmount,type FuelAllocation,type FuelMileageContext} from './oak-fuel';
 
 export type VehicleAmountCategory = VehicleField | "other";
 export type VehicleAmount = VehicleRange & {
@@ -14,11 +15,11 @@ export type VehicleAmount = VehicleRange & {
   payeeType: PayeeType | null; version: number; requestKey: string; sourceReviewId: string | null; updatedAt: string;
   source?:'manual'|'repair';repair?:RepairDetails;payroll?:PayrollSource;
 };
-export type AllocatedVehicleAmount = VehicleAmount & { allocatedAmount: number; overlapDays: number; totalDays: number };
+export type AllocatedVehicleAmount = VehicleAmount & { allocatedAmount: number|null; overlapDays: number; totalDays: number; pendingReason?:string };
 export type VehicleAmountInput = Omit<VehicleAmount, "id" | "sourceReviewId" | "updatedAt"> & { id: string | null };
-export type VehicleAmountsResponse = { vehicles: OakVehicle[]; records: Array<VehicleAmount & { allocation: ReturnType<typeof allocateVehicleAmount> | null }>;
+export type VehicleAmountsResponse = { vehicles: OakVehicle[]; records: Array<VehicleAmount & { allocation: ReturnType<typeof allocateVehicleAmount> | FuelAllocation | null }>;
   repairStatus?:RepairFeedStatus;
-  totalCount:number;page:number;pageSize:number;totalAmount:number|null;hasRepairOverlap?:boolean;defaultRange:VehicleRange };
+  totalCount:number;page:number;pageSize:number;totalAmount:number|null;hasRepairOverlap?:boolean;defaultRange:VehicleRange;fuelMileage?:Record<string,FuelMileageContext> };
 export const amountCategoryLabels:Record<VehicleAmountCategory,string>={maintenance:"维修费",labor:"司机工资",insurance:"车辆保险",income:"车辆收入",fuel:"油费",other:"其他费用"};
 export const amountCategories = ["maintenance", "labor", "insurance", "income", "fuel", "other"] as const;
 const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86400000;
@@ -54,11 +55,11 @@ function uncoveredAllocation(record: VehicleRange & { amount: number }, range: V
   }
   return cents / 100;
 }
-export function calculateDatedVehicleAccounting(vehicle: OakVehicle, range: VehicleRange, tasks: DriverTask[], settlements: ProfitSettlement[], review: VehicleAccountingReview | null, sourceHash: string, records: VehicleAmount[],repairStatus?:RepairFeedStatus,incomeSources?:import('./oak-income-coverage').IncomeActivitySource[]): VehicleAccountingRow {
+export function calculateDatedVehicleAccounting(vehicle: OakVehicle, range: VehicleRange, tasks: DriverTask[], settlements: ProfitSettlement[], review: VehicleAccountingReview | null, sourceHash: string, records: VehicleAmount[],repairStatus?:RepairFeedStatus,incomeSources?:import('./oak-income-coverage').IncomeActivitySource[],fuelMileage?:FuelMileageContext): VehicleAccountingRow {
   const row = calculateVehicleAccounting(vehicle, range, tasks, settlements, null, sourceHash);
-  const amounts = records.filter(record => record.vehicleId === vehicle.id && overlaps(record, range)).map(record => ({ ...record, ...allocateVehicleAmount(record, range) }));
+  const amounts:AllocatedVehicleAmount[] = records.filter(record => record.vehicleId === vehicle.id && overlaps(record, range)).map(record => ({ ...record, ...(record.category==='fuel'?allocateFuelAmount(record,range,fuelMileage):allocateVehicleAmount(record, range)) }));
   const entries = (category: VehicleAmountCategory) => amounts.filter(item => item.category === category);
-  const sum = (category: VehicleAmountCategory) => entries(category).reduce((value, item) => value + Math.round(item.allocatedAmount * 100), 0) / 100;
+  const sum = (category: VehicleAmountCategory) => entries(category).reduce((value, item) => value + Math.round((item.allocatedAmount??0) * 100), 0) / 100;
   const covered = (task: DriverTask, category: VehicleAmountCategory) => entries(category).some(item => task.workDate >= item.dateFrom && task.workDate <= item.dateTo);
   const remainingIncome = tasks.filter(task => !covered(task, "income"));
   const income = summarizeIncome(remainingIncome);
@@ -98,11 +99,17 @@ export function calculateDatedVehicleAccounting(vehicle: OakVehicle, range: Vehi
   for (const category of ["fuel", "maintenance", "insurance"] as const) row.lines[category] = {
     amount: entries(category).length ? sum(category) : null, source: entries(category).length ? "ledger" : "missing", basis: `${entries(category).length} 笔明细按重叠天数分摊`
   };
+  const fuel=entries('fuel'),pendingFuel=fuel.filter(item=>item.allocatedAmount==null);
+  if(fuel.length){
+    const reason=[...new Set(pendingFuel.map(item=>item.pendingReason))].filter(Boolean).join('；');
+    row.lines.fuel={amount:pendingFuel.length?null:sum('fuel'),source:'ledger',basis:`${fuel.length} 笔油费 · 按作业里程分摊${reason?` · ${reason}`:''}`,
+      ...(pendingFuel.length?{pendingReason:reason,...(fuel.some(item=>item.allocatedAmount!=null)?{knownAmount:sum('fuel')}: {})}: {})};
+  }
   if(repairStatus){
     const manual=entries('maintenance').filter(item=>item.source!=='repair');const source=entries('maintenance').filter(item=>item.source==='repair');
     const conflict=manual.some(item=>item.sourceReviewId!=null&&source.some(invoice=>overlaps(item,invoice)));
     const known=repairStatus.available&&(repairStatus.matchedVehicleIds.includes(vehicle.id)||manual.length>0)&&!source.some(item=>item.repair?.dateBasis!=='completed')&&!conflict&&!repairStatus.reviewVehicleIds?.includes(vehicle.id);
-    row.lines.maintenance={amount:known?[...manual,...source].reduce((sum,item)=>sum+Math.round(item.allocatedAmount*100),0)/100:null,source:known?'ledger':'missing',basis:!repairStatus.available?repairStatus.message:conflict?'人工维修总额与维修库账单周期重叠，待核对':!repairStatus.matchedVehicleIds.includes(vehicle.id)&&!manual.length?'维修库未匹配此车号':`${source.length} 笔维修库账单 · ${manual.length} 笔人工明细`};
+    row.lines.maintenance={amount:known?[...manual,...source].reduce((sum,item)=>sum+Math.round((item.allocatedAmount??0)*100),0)/100:null,source:known?'ledger':'missing',basis:!repairStatus.available?repairStatus.message:conflict?'人工维修总额与维修库账单周期重叠，待核对':!repairStatus.matchedVehicleIds.includes(vehicle.id)&&!manual.length?'维修库未匹配此车号':`${source.length} 笔维修库账单 · ${manual.length} 笔人工明细`};
   }
   applyOwnerVehicleCosts(row.lines,roles.size===1&&roles.has('owner')&&!uncoveredTasks.some(task=>!taskPayeeType(task)));
   row.otherAmount = sum("other"); row.amounts = amounts; row.review = review; row.stale = false;
