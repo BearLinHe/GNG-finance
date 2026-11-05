@@ -6,13 +6,17 @@ import {parseDriverWorkbook} from '../lib/oak-driver-import';
 import ExcelJS from 'exceljs';
 import {oakVehicleSeeds} from '../lib/oak-vehicles';
 import type {DriverWorkbookPreview,DriverTask} from '../lib/oak-driver-types';
+import type {VehicleAmount} from '../lib/oak-vehicle-amounts';
 const vehicle=oakVehicleSeeds[4];
 const task:DriverTask={driverName:vehicle.driverName,sheetName:vehicle.driverName,section:'海柜',sourceRow:3,workDate:'2026-10-03',reference:'REF',nature:'TCY1',fromLocation:'SFO',toLocation:'95206',miles:68,notes:null,rawCells:{G3:9999},payeeType:'driver'};
 const preview:DriverWorkbookPreview={fileName:'week.xlsx',fileHash:'hash',tasks:[task],sheets:[{sheetName:task.sheetName,driverName:task.driverName,selected:true,taskCount:1,dateFrom:task.workDate,dateTo:task.workDate,warnings:[]}],warnings:[],skippedSheets:[],batchPeriod:{from:'2026-10-03',to:'2026-10-09'}};
-function fake(options:{existing?:Record<string,unknown>[];previous?:DriverTask[];versionConflict?:boolean}={}){
+function fake(options:{existing?:Record<string,unknown>[];previous?:DriverTask[];versionConflict?:boolean;versionTasks?:DriverTask[];wages?:VehicleAmount[]}={}){
  const queries:Array<{sql:string;values:unknown[]}>=[],added:DriverTask[]=[];
  const client={async query(sql:string,values:unknown[]=[]){queries.push({sql,values});let rows:unknown[]=[];
-  if(sql.includes('where i.file_name=$1'))rows=options.versionConflict?[{id:9}]:[];
+  if(sql.includes('where i.file_name=$1'))rows=options.versionConflict?[{id:'9',fileHash:'old-hash',dateFrom:preview.batchPeriod.from,dateTo:preview.batchPeriod.to}]:[];
+  else if(sql.includes('from oak_driver_tasks where import_id=$1 and sheet_name=any'))rows=options.versionTasks||[];
+  else if(sql.includes('from oak_vehicle_amounts where voided_at is null'))rows=options.wages||[];
+  else if(sql.startsWith('update oak_vehicle_amounts set payroll_source'))rows=[{id:'70'}];
   else if(sql.includes('i.file_hash<>$1'))rows=options.previous||[];
   else if(sql.startsWith('select id::int'))rows=[{id:1}];
   else if(sql.startsWith('select sheet_name,section'))rows=options.existing||[];
@@ -40,6 +44,20 @@ test('conflicting existing ownership never overwrites previously imported work',
 test('different workbook versions and renamed overlapping work are blocked instead of counting twice',async()=>{
  const f=fake({versionConflict:true});await assert.rejects(mergeIncomeWorkbook(f.client,preview,mappings,[structuredClone(vehicle)]),/不同版本/);assert.equal(f.added.length,0);
  const renamed=fake({previous:[task]});await assert.rejects(mergeIncomeWorkbook(renamed.client,{...preview,fileName:'renamed.xlsx'},mappings,[structuredClone(vehicle)]),/已有其他文件/);assert.equal(renamed.added.length,0);
+});
+test('an equivalent resaved sheet links the existing jobs without duplicating work or rewriting payroll evidence',async()=>{
+ const wage={id:'70',category:'labor',vehicleId:vehicle.id,dateFrom:preview.batchPeriod.from,dateTo:preview.batchPeriod.to,version:1,payroll:{fileHash:preview.fileHash,sheetName:task.sheetName}} as VehicleAmount;
+ const f=fake({versionConflict:true,versionTasks:[{...task,id:'34',sourceRow:5,rawCells:{G5:100}}],wages:[wage]});
+ assert.deepEqual(await mergeIncomeWorkbook(f.client,preview,mappings,[structuredClone(vehicle)]),{added:0,skipped:1});
+ const update=f.queries.find(query=>query.sql.startsWith('update oak_vehicle_amounts set payroll_source'))!;
+ assert.deepEqual(JSON.parse(String(update.values[2])),{vehicleId:vehicle.id,dateFrom:wage.dateFrom,dateTo:wage.dateTo,fileHash:'old-hash',sheetName:task.sheetName,taskIds:['34']});
+ assert.equal(f.added.length,0);assert.equal(wage.payroll?.fileHash,preview.fileHash);
+});
+test('a changed route, missing leg, or different vehicle cannot reuse a resaved sheet',async()=>{
+ for(const versionTasks of [[{...task,id:'34',miles:69}],[{...task,id:'34'},{...task,id:'35',sourceRow:4}],[{...task,id:'34',driverName:oakVehicleSeeds[0].driverName}]]){
+  const f=fake({versionConflict:true,versionTasks});await assert.rejects(mergeIncomeWorkbook(f.client,preview,mappings,[structuredClone(vehicle),structuredClone(oakVehicleSeeds[0])]),/不同版本/);
+  assert.equal(f.added.length,0);assert.equal(f.queries.some(query=>query.sql.startsWith('update oak_vehicle_amounts')),false);
+ }
 });
 test('equal routes for different vehicles do not create a false duplicate',async()=>{
  const f=fake({previous:[{...task,driverName:oakVehicleSeeds[0].driverName}]});const result=await mergeIncomeWorkbook(f.client,preview,mappings,[structuredClone(vehicle),structuredClone(oakVehicleSeeds[0])]);assert.equal(result.added,1);

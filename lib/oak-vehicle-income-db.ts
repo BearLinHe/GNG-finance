@@ -4,6 +4,7 @@ import {readOakVehicles} from './oak-vehicles-db';
 import {readVehicleAmounts} from './oak-vehicle-amounts-db';
 import {vehicleRange,type VehicleRange} from './oak-vehicle-accounting';
 import {vehicleForSubject} from './oak-vehicles';
+import {readIncomeActivitySources} from './oak-payroll-activity-db';
 import {buildVehicleIncomeRows,incomeMapDays,summarizeVehicleIncome,vehicleIncomeStatuses,type VehicleIncomeResponse} from './oak-vehicle-income';
 
 export async function listVehicleIncome(params:URLSearchParams):Promise<VehicleIncomeResponse>{
@@ -25,7 +26,7 @@ export async function listVehicleIncome(params:URLSearchParams):Promise<VehicleI
         union all select min(date_from),max(date_to) from oak_vehicle_amounts where category='income' and voided_at is null) a`)).rows[0];
       const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const scope=range||{dateFrom:bounds.dateFrom||today,dateTo:bounds.dateTo||today};
       const tasks=await readRatedDriverTasks(client,scope),amounts=await readVehicleAmounts(client,scope);
-      const sources=(await client.query(`select i.file_hash as "fileHash",jsonb_agg(distinct t.sheet_name) as "sheetNames" from oak_driver_imports i join oak_driver_tasks t on t.import_id=i.id group by i.id`)).rows;
+      const sources=await readIncomeActivitySources(client,vehicles);
       let rows=buildVehicleIncomeRows(vehicles,tasks,amounts,scope,sources).filter(row=>!vehicleId||row.vehicleId===vehicleId);
       const search=(params.get('search')||'').trim().toLocaleLowerCase();
       if(search)rows=rows.filter(row=>[row.driverName,row.vehicleNumber,row.label,row.reference,row.fromLocation,row.toLocation,row.basis,row.task?.fileName].join(' ').toLocaleLowerCase().includes(search));

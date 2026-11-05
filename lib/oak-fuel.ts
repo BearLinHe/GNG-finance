@@ -1,10 +1,11 @@
 import type {VehicleRange} from './oak-vehicle-accounting';
 import type {VehicleAmount} from './oak-vehicle-amounts';
 import {vehicleForSubject,type OakVehicle} from './oak-vehicles';
+import {matchesPayrollActivityLink,type PayrollActivityTarget} from './oak-payroll-activity';
 
 export type FuelMileageDay={workDate:string;miles:number|null};
 export type FuelMileageContext={days:FuelMileageDay[];coverage:VehicleRange[];gaps:Array<VehicleRange&{reason:string}>};
-export type FuelMileageSource={driverName:string;sheetName:string;fileHash:string;fileName:string;dateFrom:string|null;dateTo:string|null};
+export type FuelMileageSource={driverName:string;sheetName:string;fileHash:string;fileName:string;dateFrom:string|null;dateTo:string|null;taskIds?:string[]};
 export type FuelAllocation={allocatedAmount:number|null;overlapDays:number;totalDays:number;basis:'mileage';periodMiles:number|null;rangeMiles:number|null;unitPrice:number|null;pendingReason?:string};
 const day=(date:string)=>Date.parse(`${date}T00:00:00Z`)/86400000;
 const overlaps=(a:VehicleRange,b:VehicleRange)=>a.dateFrom<=b.dateTo&&a.dateTo>=b.dateFrom;
@@ -13,14 +14,16 @@ export function buildFuelMileageContexts(vehicles:OakVehicle[],days:Array<FuelMi
  const contexts:Record<string,FuelMileageContext>={};
  const get=(id:string)=>contexts[id]??={days:[],coverage:[],gaps:[]};
  const loaded=new Set<string>();
+ const targets:PayrollActivityTarget[]=[];
  for(const source of sources){
   const vehicle=vehicleForSubject(vehicles,source.driverName);if(!vehicle)continue;
   loaded.add(JSON.stringify([vehicle.id,source.fileHash,source.sheetName]));
+  if(source.taskIds)targets.push({...source,taskIds:source.taskIds,vehicleId:vehicle.id});
   if(source.dateFrom&&source.dateTo)get(vehicle.id).coverage.push({dateFrom:source.dateFrom,dateTo:source.dateTo});
  }
  for(const row of days){const vehicle=vehicleForSubject(vehicles,row.driverName);if(vehicle)get(vehicle.id).days.push({workDate:row.workDate,miles:row.miles});}
  for(const wage of wages){
-  if(!wage.payroll||loaded.has(JSON.stringify([wage.vehicleId,wage.payroll.fileHash,wage.payroll.sheetName])))continue;
+  if(!wage.payroll||loaded.has(JSON.stringify([wage.vehicleId,wage.payroll.fileHash,wage.payroll.sheetName]))||targets.some(target=>matchesPayrollActivityLink(wage,target)))continue;
   get(wage.vehicleId).gaps.push({dateFrom:wage.dateFrom,dateTo:wage.dateTo,reason:`尚未同步作业：${wage.payroll.fileName}`});
  }
  for(const context of Object.values(contexts)){

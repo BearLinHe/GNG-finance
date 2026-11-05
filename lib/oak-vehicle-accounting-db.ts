@@ -15,6 +15,7 @@ import { calculateDatedVehicleAccounting, type VehicleAmount, type VehicleAmount
 import {readRepairFeed} from './oak-repair-db';
 import {incomeActivityGaps} from './oak-income-coverage';
 import {readFuelMileage} from './oak-fuel-db';
+import {readIncomeActivitySources} from './oak-payroll-activity-db';
 
 function reviewFromRow(row: Record<string, unknown>): VehicleAccountingReview {
   return { vehicleId: String(row.vehicle_id), dateFrom: String(row.date_from), dateTo: String(row.date_to),
@@ -30,7 +31,7 @@ async function readAccounting(client: PoolClient, query: AccountingQuery, freshR
   // These parameter-free reads share the same transaction snapshot and network round trip.
   const [reviewResult, importResult, subjectResult, ruleResult] = await client.query(`
     select a.*,a.date_from::text,a.date_to::text,a.updated_at::text from oak_vehicle_accounting a order by a.updated_at desc,a.id desc;
-    select i.file_name,i.file_hash,i.period_from::text,i.period_to::text,min(t.work_date)::text as first_date,jsonb_agg(distinct t.sheet_name) as sheet_names
+    select i.file_name,i.period_from::text,i.period_to::text,min(t.work_date)::text as first_date
       from oak_driver_imports i join oak_driver_tasks t on t.import_id=i.id group by i.id;
     select driver_name as name,count(*)::int as "taskCount" from oak_driver_tasks group by driver_name order by driver_name;
     ${incomeRulesQuery}
@@ -62,6 +63,7 @@ async function readAccounting(client: PoolClient, query: AccountingQuery, freshR
   const taskRows = new Map<string, DriverTask[]>();
   const repairFeed=await repairPromise;
   const ledgerAmounts=await readVehicleAmounts(client, {dateFrom:from,dateTo:to});
+  const activitySources=await readIncomeActivitySources(client,vehicles);
   const fuelMileage=await readFuelMileage(client,vehicles,ledgerAmounts);
   const amountRows = [...ledgerAmounts,...repairFeed.records.filter(item=>item.dateFrom<=to&&item.dateTo>=from)];
   const rows = selected.map(vehicle => {
@@ -71,9 +73,9 @@ async function readAccounting(client: PoolClient, query: AccountingQuery, freshR
     const vehicleAmounts = amountRows.filter(item=>item.vehicleId===vehicle.id && item.dateFrom<=range.dateTo && item.dateTo>=range.dateFrom);
     const vehicleSettlements = settlements.filter(item=>vehicleIdFor(item.subject)===vehicle.id);
     const sourceHash = createHash("sha256").update(JSON.stringify([vehicle, range, profitTaskSignature(scoped),
-      scoped.map(task => [task.id, task.income]), vehicleSettlements, vehicleAmounts,fuelMileage[vehicle.id],incomeActivityGaps(vehicleAmounts,imports.map(item=>({fileHash:item.file_hash,sheetNames:item.sheet_names})),range)])).digest("hex");
+      scoped.map(task => [task.id, task.income]), vehicleSettlements, vehicleAmounts,fuelMileage[vehicle.id],incomeActivityGaps(vehicleAmounts,activitySources,range)])).digest("hex");
     const review = allReviews.find(item => item.vehicleId === vehicle.id && item.dateFrom === range.dateFrom && item.dateTo === range.dateTo) || null;
-    const row = calculateDatedVehicleAccounting(vehicle, range, scoped, vehicleSettlements, review, sourceHash, vehicleAmounts,repairFeed.status,imports.map(item=>({fileHash:item.file_hash,sheetNames:item.sheet_names})),fuelMileage[vehicle.id]);
+    const row = calculateDatedVehicleAccounting(vehicle, range, scoped, vehicleSettlements, review, sourceHash, vehicleAmounts,repairFeed.status,activitySources,fuelMileage[vehicle.id]);
     row.history = allReviews.filter(item => item.vehicleId === vehicle.id).map(item => ({ dateFrom: item.dateFrom, dateTo: item.dateTo }));
     return row;
   });

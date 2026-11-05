@@ -2,6 +2,7 @@ import type { PayeeType } from './oak-payee';
 import type { OakVehicle } from './oak-vehicles';
 import { incomeAmount, incomeText } from './oak-income';
 import { vehicleRange, type VehicleRange } from './oak-vehicle-accounting';
+import type { PayrollActivityLink } from './oak-payroll-activity';
 
 export type PayrollCell = { address: string; value: string | number | null };
 export type PayrollCandidate = { id: string; label: string; amount: number | null; cells: PayrollCell[] };
@@ -9,7 +10,7 @@ export type PayrollSheet = { sheetName: string; vehicleId: string | null; payeeT
   candidateId: string; amount: number | null; selected: boolean; candidates: PayrollCandidate[]; warnings: string[]; existingId?: string };
 export type PayrollPreview = VehicleRange & { fileName: string; fileHash: string; sheets: PayrollSheet[]; skippedSheets: string[] };
 export type PayrollSource = { fileName: string; fileHash: string; sheetName: string; candidate: PayrollCandidate;
-  originalAmount: number | null; confirmedAmount: number; warnings: string[]; note: string };
+  originalAmount: number | null; confirmedAmount: number; warnings: string[]; note: string; activityLink?: PayrollActivityLink };
 export type PayrollSelection = { sheetName: string; vehicleId: string; payeeType: PayeeType; candidateId: string; amount: number; note: string };
 export type PayrollImportInput = VehicleRange & { selections: PayrollSelection[] };
 export const payrollWarningLabels = {

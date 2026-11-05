@@ -7,6 +7,8 @@ import {incomeText} from './oak-income';
 import type {DriverWorkbookPreview} from './oak-driver-types';
 import type {PayeeType} from './oak-payee';
 import type {DriverTask} from './oak-driver-types';
+import {readVehicleAmounts} from './oak-vehicle-amounts-db';
+import {savePayrollActivityLink} from './oak-payroll-activity-db';
 
 export type IncomeSheetMapping={sheetName:string;vehicleId:string;payeeType:PayeeType|null};
 export function validateIncomeSheetMappings(value:unknown,preview:DriverWorkbookPreview):IncomeSheetMapping[]{
@@ -26,6 +28,29 @@ export function validateIncomeSheetMappings(value:unknown,preview:DriverWorkbook
 }
 function taskSignature(task:Pick<DriverTask,'workDate'|'reference'|'nature'|'fromLocation'|'toLocation'|'miles'|'section'>){
   return JSON.stringify([task.workDate,task.reference,task.nature,task.fromLocation,task.toLocation,task.miles,task.section]);
+}
+function sameSheetWork(left:DriverTask[],right:DriverTask[]){
+  const ordered=(tasks:DriverTask[])=>[...tasks].sort((a,b)=>a.section.localeCompare(b.section)||a.sourceRow-b.sourceRow).map(taskSignature);
+  return left.length===right.length&&JSON.stringify(ordered(left))===JSON.stringify(ordered(right));
+}
+
+async function reuseMatchingWorkbook(client:PoolClient,preview:DriverWorkbookPreview,mappings:IncomeSheetMapping[],vehicles:OakVehicle[],batch:{id:string;fileHash:string;dateFrom:string|null;dateTo:string|null}){
+  const period={dateFrom:preview.batchPeriod.from,dateTo:preview.batchPeriod.to};
+  if(batch.dateFrom!==period.dateFrom||batch.dateTo!==period.dateTo)return null;
+  const existing=(await client.query(`select id::text,sheet_name as "sheetName",driver_name as "driverName",section,source_row as "sourceRow",
+    work_date::text as "workDate",reference,nature,from_location as "fromLocation",to_location as "toLocation",miles::float8,payee_type as "payeeType"
+    from oak_driver_tasks where import_id=$1 and sheet_name=any($2::text[]) order by id`,[batch.id,mappings.map(mapping=>mapping.sheetName)])).rows as DriverTask[];
+  const scoped=mappings.map(mapping=>({mapping,old:existing.filter(task=>task.sheetName===mapping.sheetName),incoming:preview.tasks.filter(task=>task.sheetName===mapping.sheetName)}));
+  if(scoped.some(({mapping,old,incoming})=>!old.length||old.some(task=>!task.id||vehicleForSubject(vehicles,task.driverName)?.id!==mapping.vehicleId
+    ||(task.payeeType&&mapping.payeeType&&task.payeeType!==mapping.payeeType))||!sameSheetWork(old,incoming)))return null;
+  const wages=await readVehicleAmounts(client,period);
+  for(const {mapping,old} of scoped){
+    for(const wage of wages.filter(wage=>wage.category==='labor'&&wage.vehicleId===mapping.vehicleId&&wage.dateFrom===period.dateFrom&&wage.dateTo===period.dateTo
+      &&wage.payroll?.fileHash===preview.fileHash&&wage.payroll?.sheetName===mapping.sheetName)){
+      await savePayrollActivityLink(client,wage,{...period,fileHash:batch.fileHash,sheetName:mapping.sheetName,vehicleId:mapping.vehicleId,taskIds:old.map(task=>task.id!)},'同车同周期的工作表逐段比对一致，复用已有作业');
+    }
+  }
+  return {added:0,skipped:existing.length};
 }
 export async function previewIncomeWorkbook(buffer:Buffer,fileName:string){
   const preview=await parseDriverWorkbook(buffer,fileName);await ensureSystemSchema();
@@ -49,10 +74,15 @@ export async function mergeIncomeWorkbook(client:PoolClient,preview:DriverWorkbo
       await client.query(`insert into oak_workflow_audit(entity_kind,entity_id,event,details) values('vehicle',0,'确认周表作业关联',$1::jsonb)`,[JSON.stringify({before:vehicle,after:next})]);vehicle.aliases=next.aliases;vehicle.version++;
     }
   }
-  const otherVersions=await client.query(`select i.id from oak_driver_imports i join oak_driver_tasks t on t.import_id=i.id
+  const otherVersions=await client.query(`select i.id::text,i.file_hash as "fileHash",i.period_from::text as "dateFrom",i.period_to::text as "dateTo"
+    from oak_driver_imports i join oak_driver_tasks t on t.import_id=i.id
     where i.file_name=$1 and i.file_hash<>$2 group by i.id
-    having coalesce(i.period_from,min(t.work_date))<=$4::date and coalesce(i.period_to,max(t.work_date))>=$3::date limit 1`,[preview.fileName,preview.fileHash,preview.batchPeriod.from,preview.batchPeriod.to]);
-  if(otherVersions.rowCount)throw Error('同一周期周表已存在不同版本，请先在作业明细核对，未重复新增');
+    having coalesce(i.period_from,min(t.work_date))<=$4::date and coalesce(i.period_to,max(t.work_date))>=$3::date limit 2`,[preview.fileName,preview.fileHash,preview.batchPeriod.from,preview.batchPeriod.to]);
+  if(otherVersions.rowCount){
+    const reused=otherVersions.rowCount===1?await reuseMatchingWorkbook(client,preview,mappings,vehicles,otherVersions.rows[0]):null;
+    if(reused)return reused;
+    throw Error('同一周期周表已存在不同版本，作业无法确认完全一致，请核对，未重复新增');
+  }
   const selected=preview.tasks.filter(task=>seen.has(task.sheetName));
   const dates=selected.map(task=>task.workDate).sort();
   const previous=(await client.query(`select t.driver_name as "driverName",t.work_date::text as "workDate",t.reference,t.nature,t.from_location as "fromLocation",t.to_location as "toLocation",t.miles::float8 as miles,t.section
