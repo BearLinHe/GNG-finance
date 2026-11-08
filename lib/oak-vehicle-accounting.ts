@@ -36,6 +36,7 @@ export function applyOwnerVehicleCosts(lines: Record<VehicleField, VehicleAccoun
 }
 export type VehicleAccountingRow = VehicleRange & {
   vehicle: OakVehicle; subjects: string[]; taskCount: number; dayCount: number; miles: number | null;
+  driverPeriods?: import('./oak-vehicle-drivers').VehicleDriverPeriod[];
   incomeSummary: IncomeSummary; autoIncome: number | null; autoLabor: number | null; autoPayeeType: PayeeType; payeeType: PayeeType;
   laborSources: Array<{ id: string; subject: string; from: string; to: string; amount: number }>;
   lines: Record<VehicleField, VehicleAccountingLine>; otherAmount: number; totalCost: number | null;

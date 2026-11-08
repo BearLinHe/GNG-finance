@@ -576,6 +576,12 @@ async function ensureSystemSchemaOnce() {
         aliases jsonb not null default '[]', version integer not null default 1,
         updated_at timestamptz not null default now(), unique(vehicle_number)
       )`);
+      schemaQuery(`create table if not exists oak_vehicle_driver_history (
+        id bigserial primary key, vehicle_id varchar(60) not null references oak_vehicles(id),
+        driver_name varchar(120) not null, effective_date date not null,
+        version integer not null default 1, updated_at timestamptz not null default now(),
+        unique(vehicle_id,effective_date), check(effective_date <> 'infinity'::date)
+      )`);
       schemaQuery(`create table if not exists oak_vehicle_accounting (
         id bigserial primary key, vehicle_id varchar(60) not null references oak_vehicles(id),
         date_from date not null, date_to date not null, payee_type varchar(20) not null check(payee_type in ('driver','owner')),

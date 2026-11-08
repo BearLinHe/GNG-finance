@@ -16,6 +16,8 @@ import {readRepairFeed} from './oak-repair-db';
 import {incomeActivityGaps} from './oak-income-coverage';
 import {readFuelMileage} from './oak-fuel-db';
 import {readIncomeActivitySources} from './oak-payroll-activity-db';
+import {vehicleDriverHistoryQuery} from './oak-vehicle-drivers-db';
+import {vehicleDriverPeriods,type VehicleDriverChange} from './oak-vehicle-drivers';
 
 function reviewFromRow(row: Record<string, unknown>): VehicleAccountingReview {
   return { vehicleId: String(row.vehicle_id), dateFrom: String(row.date_from), dateTo: String(row.date_to),
@@ -29,13 +31,20 @@ async function readAccounting(client: PoolClient, query: AccountingQuery, freshR
   if (query.vehicleId && !vehicles.some(vehicle => vehicle.id === query.vehicleId)) throw new IncomeInputError("车辆不存在");
   const repairPromise = readRepairFeed(vehicles, freshRepair);
   // These parameter-free reads share the same transaction snapshot and network round trip.
-  const [reviewResult, importResult, subjectResult, ruleResult] = await client.query(`
+  const [reviewResult, importResult, subjectResult, ruleResult, driverResult] = await client.query(`
     select a.*,a.date_from::text,a.date_to::text,a.updated_at::text from oak_vehicle_accounting a order by a.updated_at desc,a.id desc;
     select i.file_name,i.period_from::text,i.period_to::text,min(t.work_date)::text as first_date
       from oak_driver_imports i join oak_driver_tasks t on t.import_id=i.id group by i.id;
     select driver_name as name,count(*)::int as "taskCount" from oak_driver_tasks group by driver_name order by driver_name;
-    ${incomeRulesQuery}
-  `) as unknown as [QueryResult, QueryResult, QueryResult, QueryResult];
+    ${incomeRulesQuery};
+    ${vehicleDriverHistoryQuery}
+  `) as unknown as [QueryResult, QueryResult, QueryResult, QueryResult, QueryResult<VehicleDriverChange>];
+  const driverHistory = new Map<string, VehicleDriverChange[]>();
+  for (const change of driverResult.rows) {
+    const history = driverHistory.get(change.vehicleId) || [];
+    history.push(change);
+    driverHistory.set(change.vehicleId, history);
+  }
   const allReviews = reviewResult.rows.map(reviewFromRow);
   const imports = importResult.rows;
   const latest = imports.map(item => item.period_from && item.period_to ? { from: item.period_from, to: item.period_to } :
@@ -76,6 +85,7 @@ async function readAccounting(client: PoolClient, query: AccountingQuery, freshR
       scoped.map(task => [task.id, task.income]), vehicleSettlements, vehicleAmounts,fuelMileage[vehicle.id],incomeActivityGaps(vehicleAmounts,activitySources,range)])).digest("hex");
     const review = allReviews.find(item => item.vehicleId === vehicle.id && item.dateFrom === range.dateFrom && item.dateTo === range.dateTo) || null;
     const row = calculateDatedVehicleAccounting(vehicle, range, scoped, vehicleSettlements, review, sourceHash, vehicleAmounts,repairFeed.status,activitySources,fuelMileage[vehicle.id]);
+    row.driverPeriods = vehicleDriverPeriods(vehicle.driverName, driverHistory.get(vehicle.id) || [], range);
     row.history = allReviews.filter(item => item.vehicleId === vehicle.id).map(item => ({ dateFrom: item.dateFrom, dateTo: item.dateTo }));
     return row;
   });

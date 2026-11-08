@@ -1,18 +1,19 @@
 "use client";
 import {Fragment,useEffect,useRef,useState,type ReactNode} from "react";
-import {GripVertical,RefreshCw,RotateCcw,Save} from "lucide-react";
+import {GripVertical,Pencil,RefreshCw,RotateCcw,Save} from "lucide-react";
 import {incomeMoney,json} from "./oak-income-controls";
 import {tableDrag} from "./oak-table-layout";
 import {vehicleFields,type VehicleAccountingResponse,type VehicleAccountingRow,type VehicleField,type VehicleRange} from "@/lib/oak-vehicle-accounting";
 import type {VehicleAmountCategory} from "@/lib/oak-vehicle-amounts";
 import {vehicleTotalsPreview} from '@/lib/oak-vehicle-totals';
+import {vehicleDriverLabel} from '@/lib/oak-vehicle-drivers';
 type Draft=Record<VehicleField,{mode:'auto'|'manual';value:string}>;
 type State={row:VehicleAccountingRow;range:VehicleRange;draft:Draft;other:string;number:string;edited:VehicleField[];otherChanged:boolean};
 const text=(value:number|null)=>value==null?'':value.toFixed(2);
 const parse=(value:string)=>/^(?:0|[1-9]\d{0,9})(?:\.\d{1,2})?$/.test(value)?Number(value):null;
 const draftFor=(row:VehicleAccountingRow):Draft=>Object.fromEntries(vehicleFields.map(key=>[key,{mode:(key==='income'||key==='labor')&&!row.amounts?.some(item=>item.category===key)?'auto':'manual',value:text(row.lines[key].amount)}])) as Draft;
 const initialState=(row:VehicleAccountingRow):State=>({row,range:{dateFrom:row.dateFrom,dateTo:row.dateTo},draft:draftFor(row),other:String(row.otherAmount),number:row.vehicle.vehicleNumber||'',edited:[],otherChanged:false});
-export default function VehicleSummaryRow({initial,hidden,columnOrder,onDirty,onUpdated,onOpenAmounts,onMoveRow,registerFlush}:{initial:VehicleAccountingRow;hidden:boolean;columnOrder:string[];onDirty:(id:string,dirty:boolean)=>void;onUpdated:(row:VehicleAccountingRow)=>void;onOpenAmounts:(category:VehicleAmountCategory,row:VehicleAccountingRow)=>void;onMoveRow:(from:string,to:string)=>void;registerFlush:(id:string,flush:(()=>Promise<boolean>)|null)=>void}){
+export default function VehicleSummaryRow({initial,hidden,columnOrder,onDirty,onUpdated,onOpenAmounts,onOpenDriverHistory,onMoveRow,registerFlush}:{initial:VehicleAccountingRow;hidden:boolean;columnOrder:string[];onDirty:(id:string,dirty:boolean)=>void;onUpdated:(row:VehicleAccountingRow)=>void;onOpenAmounts:(category:VehicleAmountCategory,row:VehicleAccountingRow)=>void;onOpenDriverHistory:(row:VehicleAccountingRow)=>void;onMoveRow:(from:string,to:string)=>void;registerFlush:(id:string,flush:(()=>Promise<boolean>)|null)=>void}){
  const [state,setState]=useState(()=>initialState(initial));const live=useRef(state);live.current=state;
  const [saving,setSaving]=useState(false),[error,setError]=useState('');
  const edits=useRef<Record<string,number>>({}),ready=useRef<Record<string,number>>({}),pending=useRef<Promise<boolean>|null>(null),queued=useRef(false),mounted=useRef(true);
@@ -87,7 +88,7 @@ export default function VehicleSummaryRow({initial,hidden,columnOrder,onDirty,on
  const dateCell=(field:'dateFrom'|'dateTo')=><td><input aria-label={`${initial.vehicle.id} ${field==='dateFrom'?'开始日期':'结束日期'}`} className="oak-inline-date" type="date" value={state.range[field]} onChange={event=>setLive({...live.current,range:{...live.current.range,[field]:event.target.value}})} onBlur={event=>{if(!(event.relatedTarget as HTMLElement|null)?.classList.contains('oak-inline-date'))void readPeriod();}}/></td>;
  const cells:Record<string,ReactNode>={
   vehicle:<td className="oak-inline-number"><div className="oak-number-with-grip"><button className="oak-drag-handle" title={`拖动 ${state.number||initial.vehicle.driverName} 调整行顺序`} {...drag.drag}><GripVertical size={14}/></button><input aria-label={`${initial.vehicle.id} 车辆号码`} maxLength={30} placeholder="待补车号" value={state.number} onChange={event=>{edits.current.number=(edits.current.number||0)+1;setLive({...live.current,number:event.target.value});}} onBlur={()=>void drain(['number'])}/></div></td>,
-  driver:<td className="oak-inline-driver" title={`作业归属：${state.row.subjects.join('、')}`}>{initial.vehicle.driverName}</td>,dateFrom:dateCell('dateFrom'),dateTo:dateCell('dateTo'),
+  driver:<td className="oak-inline-driver"><div className="oak-inline-driver-cell"><span title={initial.driverPeriods?.map(period=>`${period.dateFrom} 至 ${period.dateTo}：${period.driverName}`).join('\n')}>{vehicleDriverLabel(initial.vehicle.driverName,initial.driverPeriods)}</span><button type="button" className="icon-button" title={`编辑 ${initial.vehicle.vehicleNumber || '未编号车辆'} 的司机记录`} disabled={saving||!matching} onClick={()=>onOpenDriverHistory(initial)}><Pencil size={13}/></button></div></td>,dateFrom:dateCell('dateFrom'),dateTo:dateCell('dateTo'),
   maintenance:amountCell('maintenance','车辆维修'),labor:amountCell('labor',state.row.payeeType==='owner'?'车主工资':'司机工资'),insurance:amountCell('insurance','车辆保险'),income:amountCell('income','周期收入'),fuel:amountCell('fuel','周期油费'),
   other:<td className="oak-inline-amount oak-money-cost"><input aria-label={`${initial.vehicle.id} 其他费用`} title="其他周期费用" inputMode="decimal" disabled={!matching} readOnly={(state.row.amounts?.filter(item=>item.category==='other').length||0)>1||state.row.amounts?.some(item=>item.category==='other'&&(item.dateFrom!==state.row.dateFrom||item.dateTo!==state.row.dateTo))} onDoubleClick={()=>onOpenAmounts('other',state.row)} value={state.other} onChange={event=>{edits.current.other=(edits.current.other||0)+1;setLive({...live.current,other:event.target.value,otherChanged:true});}} onBlur={()=>void drain(['other'])}/></td>,
   cost:<td className={`oak-inline-total${provisional&&cost!=null?' oak-inline-provisional':''}`} title={resultTitle}><strong>{cost==null?'—':incomeMoney(cost)}</strong>{provisional&&cost!=null?<small>已知支出 · 待补{preview.pendingCosts}</small>:null}</td>,net:<td className={`oak-inline-total ${net==null?'':provisional?'oak-inline-provisional':net<0?'loss':'profit'}`} title={resultTitle}><strong>{net==null?'—':incomeMoney(net)}</strong><small>{!matching?'重新核算中':resultHint}</small></td>,

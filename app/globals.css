@@ -1290,6 +1290,9 @@ button {
 .oak-inline-table .oak-inline-date { padding-inline: 1px; }
 .oak-inline-number input { font-weight: 600; }
 .oak-inline-driver { overflow-wrap: anywhere; }
+.oak-inline-driver-cell { display:flex;align-items:center;justify-content:space-between;gap:4px; }
+.oak-inline-driver-cell > span { min-width:0;white-space:normal;overflow-wrap:anywhere; }
+.oak-inline-driver-cell .icon-button { width:26px;height:26px;flex:0 0 26px; }
 .oak-inline-total { text-align: right; font-variant-numeric: tabular-nums; }
 .oak-inline-not-applicable { text-align:right;color:#7a899a; }
 .oak-inline-not-applicable small { display:block;margin-top:4px;font-size:10px; }
@@ -1873,6 +1876,24 @@ button {
 .oak-income-fields textarea { resize: vertical; }
 .oak-income-fields input:focus, .oak-income-fields select:focus, .oak-income-fields textarea:focus { outline: 2px solid #bfdbfe; border-color: var(--blue); }
 .oak-income-field-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.oak-driver-history-baseline { display:flex;align-items:baseline;gap:12px;min-width:0;font-size:13px; }
+.oak-driver-history-baseline > span { flex-shrink:0;color:var(--muted); }
+.oak-driver-history-baseline strong { min-width:0;overflow-wrap:anywhere; }
+.oak-driver-history-body { grid-template-columns:minmax(0,1fr); }
+.oak-driver-history-list { border-top:1px solid var(--line);padding-top:14px; }
+.oak-driver-history-list h3 { margin:0 0 10px;font-size:13px; }
+.oak-driver-history-list p { margin:0;padding:8px 0;font-size:12px; }
+.oak-driver-history-list table { width:100%;min-width:0;table-layout:fixed;border-collapse:collapse;font-size:12px; }
+.oak-driver-history-list th,.oak-driver-history-list td { padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;white-space:normal;overflow-wrap:anywhere; }
+.oak-driver-history-list th:first-child { width:96px; }
+.oak-driver-history-list th:last-child { width:76px; }
+.oak-driver-history-list tr[data-editing] { background:#edf4ff; }
+.oak-driver-history-actions { display:flex;gap:4px;justify-content:flex-end; }
+.oak-driver-history-actions .icon-button { flex:0 0 28px;width:28px;height:28px; }
+.oak-driver-history-status { margin-right:auto;font-size:12px; }
+@media (max-width:460px) {
+  .oak-driver-history-body .oak-income-field-pair { grid-template-columns:minmax(0,1fr); }
+}
 .oak-income-checkbox { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #475569; }
 .oak-income-checkbox input { width: 16px; min-height: 16px; accent-color: var(--blue); }
 .oak-income-task-context { display: grid; gap: 7px; padding-bottom: 14px; border-bottom: 1px solid var(--line); font-size: 12px; overflow-wrap: anywhere; }
