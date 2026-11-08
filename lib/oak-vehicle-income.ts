@@ -6,6 +6,7 @@ import {incomeActivityGaps,type IncomeActivitySource} from './oak-income-coverag
 
 export const vehicleIncomeStatuses=['auto','reviewed','pending','included','replaced','manual','unlinked'] as const;
 export type VehicleIncomeStatus=typeof vehicleIncomeStatuses[number];
+export type VehicleIncomeDateOrder='asc'|'desc';
 export const vehicleIncomeStatusLabels:Record<VehicleIncomeStatus,string>={auto:'自动计价',reviewed:'人工核定',pending:'待审核',included:'已含整趟',replaced:'周期收入覆盖',manual:'周期核定',unlinked:'未关联车辆'};
 export type VehicleIncomeRow={id:string;vehicleId:string|null;driverName:string;vehicleNumber:string|null;dateFrom:string;dateTo:string;
   label:string;reference:string;fromLocation:string|null;toLocation:string|null;amount:number|null;originalAmount:number|null;
@@ -13,7 +14,7 @@ export type VehicleIncomeRow={id:string;vehicleId:string|null;driverName:string;
 export type VehicleIncomeResponse={vehicles:OakVehicle[];rows:VehicleIncomeRow[];totalCount:number;page:number;pageSize:number;range:VehicleRange;
   summary:{knownAmount:number;amount:number|null;pendingCount:number;includedCount:number;replacedCount:number;taskCount:number;manualCount:number};
   days?:DriverDay[]};
-export function buildVehicleIncomeRows(vehicles:OakVehicle[],tasks:DriverTask[],records:VehicleAmount[],range:VehicleRange,sources?:IncomeActivitySource[]):VehicleIncomeRow[]{
+export function buildVehicleIncomeRows(vehicles:OakVehicle[],tasks:DriverTask[],records:VehicleAmount[],range:VehicleRange,sources?:IncomeActivitySource[],dateOrder:VehicleIncomeDateOrder='asc'):VehicleIncomeRow[]{
   const incomeRecords=records.filter(record=>record.category==='income'&&record.dateFrom<=range.dateTo&&record.dateTo>=range.dateFrom);
   const days=summarizeDriverTasks(tasks);
   const dayMap=new Map(days.map(day=>[JSON.stringify([day.driverName,day.workDate]),day]));
@@ -34,9 +35,10 @@ export function buildVehicleIncomeRows(vehicles:OakVehicle[],tasks:DriverTask[],
   }
   if(sources)for(const gap of incomeActivityGaps(records,sources,range)){const vehicle=vehicles.find(vehicle=>vehicle.id===gap.vehicleId);if(!vehicle)continue;
     rows.push({id:`gap-${gap.id}`,vehicleId:vehicle.id,vehicleNumber:vehicle.vehicleNumber,driverName:vehicle.driverName,dateFrom:gap.dateFrom,dateTo:gap.dateTo,label:'作业待同步',reference:gap.fileName,
-      fromLocation:null,toLocation:null,amount:null,originalAmount:null,status:'pending',basis:`${gap.sheetName} 的工资已入账，但尚未提取本文件的作业`,activityGap:true});
+      fromLocation:null,toLocation:null,amount:null,originalAmount:null,status:'pending',basis:`${gap.sheetName} 的工资已入账，尚未确认关联的周表作业`,activityGap:true});
   }
-  return rows.sort((a,b)=>b.dateFrom.localeCompare(a.dateFrom)||a.driverName.localeCompare(b.driverName,'zh-CN')||a.id.localeCompare(b.id,undefined,{numeric:true}));
+  return rows.sort((a,b)=>(dateOrder==='asc'?1:-1)*a.dateFrom.localeCompare(b.dateFrom)
+    ||a.driverName.localeCompare(b.driverName,'zh-CN')||a.id.localeCompare(b.id,undefined,{numeric:true}));
 }
 export function summarizeVehicleIncome(rows:VehicleIncomeRow[]):VehicleIncomeResponse['summary']{
   const pendingCount=rows.filter(row=>row.status==='pending'||row.status==='unlinked').length;

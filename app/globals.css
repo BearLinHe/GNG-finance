@@ -1787,6 +1787,8 @@ button {
 .oak-income-basis, .oak-income-review-note { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.6; font-weight: 400; overflow-wrap: anywhere; }
 .oak-income-review-note { color: #475569; }
 .oak-income-row-actions { display: flex; align-items: center; gap: 6px; }
+.oak-income-date-sort { display: inline-flex; align-items: center; gap: 5px; background: transparent; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; }
+.oak-income-date-sort:hover, .oak-income-date-sort:focus-visible { color: var(--blue); }
 .oak-day-income { color: #0f766e; font-weight: 600; }
 .oak-period-day-head > span { flex-wrap: wrap; justify-content: flex-end; gap: 7px 16px; }
 .oak-income-rules-heading { display:flex;align-items:baseline;gap:12px;flex-wrap:wrap; }
@@ -2062,6 +2064,7 @@ button {
 .oak-payroll-evidence .table-wrap { max-height:45dvh;overflow:auto; }
 .oak-payroll-evidence table { width:100%;min-width:0; }
 .oak-payroll-evidence td { white-space:normal;overflow-wrap:anywhere; }
+.oak-payroll-activity-legs small { display:block;margin-top:3px;color:var(--muted); }
 .oak-income-dialog:has(> .oak-payroll-preview-scroll) > .error { margin:10px 16px;flex:0 0 auto; }
 @media(max-width:680px) {
   .oak-payroll-preview-head { padding:12px; }

@@ -13,6 +13,8 @@ export async function listVehicleIncome(params:URLSearchParams):Promise<VehicleI
     if((params.get('search')||'').length>120)throw Error('搜索内容过长');
   }catch(error){throw new IncomeInputError((error as Error).message);}
   const page=Number(params.get('page')||1),pageSize=Number(params.get('pageSize')||100),status=params.get('status')||'all';
+  const dateOrder=params.get('dateOrder')||'asc';
+  if(dateOrder!=='asc'&&dateOrder!=='desc')throw new IncomeInputError('日期排序无效');
   if(!Number.isSafeInteger(page)||page<1||![100,200,300].includes(pageSize)||status!=='all'&&!vehicleIncomeStatuses.some(value=>value===status))throw new IncomeInputError('分页或状态无效');
   await ensureSystemSchema();
   return withSystemClient(async client=>{
@@ -27,7 +29,7 @@ export async function listVehicleIncome(params:URLSearchParams):Promise<VehicleI
       const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const scope=range||{dateFrom:bounds.dateFrom||today,dateTo:bounds.dateTo||today};
       const tasks=await readRatedDriverTasks(client,scope),amounts=await readVehicleAmounts(client,scope);
       const sources=await readIncomeActivitySources(client,vehicles);
-      let rows=buildVehicleIncomeRows(vehicles,tasks,amounts,scope,sources).filter(row=>!vehicleId||row.vehicleId===vehicleId);
+      let rows=buildVehicleIncomeRows(vehicles,tasks,amounts,scope,sources,dateOrder).filter(row=>!vehicleId||row.vehicleId===vehicleId);
       const search=(params.get('search')||'').trim().toLocaleLowerCase();
       if(search)rows=rows.filter(row=>[row.driverName,row.vehicleNumber,row.label,row.reference,row.fromLocation,row.toLocation,row.basis,row.task?.fileName].join(' ').toLocaleLowerCase().includes(search));
       const summary=summarizeVehicleIncome(rows);

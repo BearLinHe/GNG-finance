@@ -42,6 +42,14 @@ test('mapped aliases merge map days without losing source names or route IDs',()
  const tasks=[task(),{...task('2'),driverName:'Test alias'}],days=incomeMapDays(tasks,vehicle);
  assert.equal(days.length,1);assert.equal(days[0].taskCount,2);assert.equal(days[0].tasks[1].driverName,'Test alias');assert.equal(days[0].miles,136);
 });
+test('income dates default to oldest first, and reversing dates preserves same-day task order and totals',()=>{
+ const tasks=rated([task('3','2026-10-09'),task('2'),task('1')]);
+ const ascending=buildVehicleIncomeRows([vehicle],tasks,[],range);
+ const descending=buildVehicleIncomeRows([vehicle],tasks,[],range,undefined,'desc');
+ assert.deepEqual(ascending.map(row=>row.task?.id),['1','2','3']);
+ assert.deepEqual(descending.map(row=>row.task?.id),['3','1','2']);
+ assert.deepEqual(summarizeVehicleIncome(ascending),summarizeVehicleIncome(descending));
+});
 test('wages without extracted work produce pending income in both views, not false complete revenue',()=>{
  const wages={...record('labor',700),payroll:{fileName:'week.xlsx',fileHash:'hash',sheetName:'Original',candidate:{id:'x',label:'check',amount:700,cells:[]},originalAmount:700,confirmedAmount:700,warnings:[],note:''}};
  const tasks=rated([task()]),rows=buildVehicleIncomeRows([vehicle],tasks,[wages],range,[]);
