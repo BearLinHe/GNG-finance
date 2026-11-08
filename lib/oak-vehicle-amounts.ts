@@ -7,7 +7,7 @@ import { taskPayeeType, type PayeeType } from "./oak-payee";
 import type {RepairDetails,RepairFeedStatus} from './oak-repair';
 import type { PayrollSource } from './oak-payroll';
 import {incomeActivityGaps} from './oak-income-coverage';
-import {allocateFuelAmount,type FuelAllocation,type FuelMileageContext} from './oak-fuel';
+import {allocateFuelAmount,type FuelAllocation,type FuelMileageContext,type FuelWorkMileage} from './oak-fuel';
 
 export type VehicleAmountCategory = VehicleField | "other";
 export type VehicleAmount = VehicleRange & {
@@ -17,7 +17,7 @@ export type VehicleAmount = VehicleRange & {
 };
 export type AllocatedVehicleAmount = VehicleAmount & { allocatedAmount: number|null; overlapDays: number; totalDays: number; pendingReason?:string };
 export type VehicleAmountInput = Omit<VehicleAmount, "id" | "sourceReviewId" | "updatedAt"> & { id: string | null };
-export type VehicleAmountsResponse = { vehicles: OakVehicle[]; records: Array<VehicleAmount & { allocation: ReturnType<typeof allocateVehicleAmount> | FuelAllocation | null }>;
+export type VehicleAmountsResponse = { vehicles: OakVehicle[]; records: Array<VehicleAmount & { allocation: ReturnType<typeof allocateVehicleAmount> | FuelAllocation | null; workMileage?:FuelWorkMileage|null }>;
   repairStatus?:RepairFeedStatus;
   totalCount:number;page:number;pageSize:number;totalAmount:number|null;hasRepairOverlap?:boolean;defaultRange:VehicleRange;fuelMileage?:Record<string,FuelMileageContext> };
 export const amountCategoryLabels:Record<VehicleAmountCategory,string>={maintenance:"维修费",labor:"司机工资",insurance:"车辆保险",income:"车辆收入",fuel:"油费",other:"其他费用"};

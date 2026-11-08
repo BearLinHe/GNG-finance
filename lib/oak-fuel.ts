@@ -7,8 +7,34 @@ export type FuelMileageDay={workDate:string;miles:number|null};
 export type FuelMileageContext={days:FuelMileageDay[];coverage:VehicleRange[];gaps:Array<VehicleRange&{reason:string}>};
 export type FuelMileageSource={driverName:string;sheetName:string;fileHash:string;fileName:string;dateFrom:string|null;dateTo:string|null;taskIds?:string[]};
 export type FuelAllocation={allocatedAmount:number|null;overlapDays:number;totalDays:number;basis:'mileage';periodMiles:number|null;rangeMiles:number|null;unitPrice:number|null;pendingReason?:string};
+export type FuelWorkMileage=VehicleRange&{miles:number|null;pendingReason?:string};
 const day=(date:string)=>Date.parse(`${date}T00:00:00Z`)/86400000;
 const overlaps=(a:VehicleRange,b:VehicleRange)=>a.dateFrom<=b.dateTo&&a.dateTo>=b.dateFrom;
+const validMiles=(miles:number|null):miles is number=>miles!=null&&Number.isFinite(miles)&&miles>=0;
+const units=(item:FuelMileageDay)=>Math.round(item.miles!*100);
+
+function mileageCoverageIssue(context:FuelMileageContext,range:VehicleRange){
+ const gap=context.gaps.find(item=>overlaps(item,range));if(gap)return gap.reason;
+ let cursor=day(range.dateFrom);
+ for(const source of context.coverage.filter(item=>overlaps(item,range)).sort((a,b)=>a.dateFrom.localeCompare(b.dateFrom))){
+  if(day(source.dateFrom)>cursor)break;cursor=Math.max(cursor,day(source.dateTo)+1);
+ }
+ if(cursor<=day(range.dateTo))return '作业周表未覆盖完整，请补齐该区间工单';
+}
+
+export function summarizeFuelWorkMileage(record:VehicleRange,filter?:VehicleRange|null,context?:FuelMileageContext):FuelWorkMileage|null{
+ const dateFrom=filter&&filter.dateFrom>record.dateFrom?filter.dateFrom:record.dateFrom;
+ const dateTo=filter&&filter.dateTo<record.dateTo?filter.dateTo:record.dateTo;
+ if(dateFrom>dateTo)return null;
+ const range={dateFrom,dateTo};
+ if(!context)return {...range,miles:null,pendingReason:'未找到该车的工单里程'};
+ const days=context.days.filter(item=>item.workDate>=dateFrom&&item.workDate<=dateTo);
+ if(days.some(item=>!validMiles(item.miles)))return {...range,miles:null,pendingReason:'统计区间内有工单缺少有效里程'};
+ const total=days.reduce((sum,item)=>sum+units(item),0);
+ if(!Number.isSafeInteger(total))return {...range,miles:null,pendingReason:'统计区间里程数值异常，请核对'};
+ const pendingReason=mileageCoverageIssue(context,range);
+ return {...range,miles:pendingReason&&!days.length?null:total/100,pendingReason};
+}
 
 export function buildFuelMileageContexts(vehicles:OakVehicle[],days:Array<FuelMileageDay&{driverName:string}>,sources:FuelMileageSource[],wages:Pick<VehicleAmount,'vehicleId'|'dateFrom'|'dateTo'|'payroll'>[]):Record<string,FuelMileageContext>{
  const contexts:Record<string,FuelMileageContext>={};
@@ -43,15 +69,9 @@ export function allocateFuelAmount(record:VehicleRange&{amount:number},range:Veh
  if(record.amount===0)return {...result,allocatedAmount:0};
  const pending=(pendingReason:string)=>({...result,pendingReason});
  if(!context)return pending('缺少完整费用周期的作业里程');
- const gap=context.gaps.find(item=>overlaps(item,record));if(gap)return pending(gap.reason);
- let cursor=day(record.dateFrom);
- for(const source of [...context.coverage].filter(item=>overlaps(item,record)).sort((a,b)=>a.dateFrom.localeCompare(b.dateFrom))){
-  if(day(source.dateFrom)>cursor)break;cursor=Math.max(cursor,day(source.dateTo)+1);
- }
- if(cursor<=day(record.dateTo))return pending('费用周期的作业周表未覆盖完整，请补齐整月作业');
+ const coverageIssue=mileageCoverageIssue(context,record);if(coverageIssue)return pending(coverageIssue);
  const days=context.days.filter(item=>item.workDate>=record.dateFrom&&item.workDate<=record.dateTo);
- if(days.some(item=>item.miles==null||!Number.isFinite(item.miles)||item.miles<0))return pending('费用周期内有作业缺少有效里程');
- const units=(item:FuelMileageDay)=>Math.round(item.miles!*100);
+ if(days.some(item=>!validMiles(item.miles)))return pending('费用周期内有作业缺少有效里程');
  const total=days.reduce((sum,item)=>sum+units(item),0);
  if(!Number.isSafeInteger(total))return pending('费用周期里程数值异常，请核对');
  if(!total)return pending('费用周期总里程为 0，需核对里程');

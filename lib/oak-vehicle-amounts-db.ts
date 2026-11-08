@@ -7,7 +7,7 @@ import { vehicleRange, type VehicleRange } from "./oak-vehicle-accounting";
 import { resolveDriverBatchPeriod } from "./oak-driver-batch";
 import {readRepairFeed} from './oak-repair-db';
 import {readFuelMileage} from './oak-fuel-db';
-import {allocateFuelAmount} from './oak-fuel';
+import {allocateFuelAmount,summarizeFuelWorkMileage} from './oak-fuel';
 
 const columns = `id::text,vehicle_id as "vehicleId",category,date_from::text as "dateFrom",date_to::text as "dateTo",amount::float8,payee_type as "payeeType",note,version,request_key as "requestKey",source_review_id::text as "sourceReviewId",updated_at::text as "updatedAt",payroll_source as payroll`;
 export async function readVehicleAmounts(client: PoolClient, range?: VehicleRange): Promise<VehicleAmount[]> {
@@ -33,13 +33,15 @@ export async function listVehicleAmounts(params: URLSearchParams) {
     const records = [...await readVehicleAmounts(client, range),...(repairFeed?.records||[])].filter(record => record.category === category && (!range||record.dateFrom<=range.dateTo&&record.dateTo>=range.dateFrom) && (!vehicleId || record.vehicleId === vehicleId) &&
       (!search || [record.note,record.repair?.sourceAccount?.name,record.repair?.sourceAccount?.login, vehicles.find(vehicle => vehicle.id === record.vehicleId)?.vehicleNumber, vehicles.find(vehicle => vehicle.id === record.vehicleId)?.driverName].join(" ").toLocaleLowerCase().includes(search)));
     const hasRepairOverlap=category==='maintenance'&&records.some(record=>record.source!=='repair'&&record.sourceReviewId!=null&&records.some(invoice=>invoice.source==='repair'&&invoice.vehicleId===record.vehicleId&&invoice.dateFrom<=record.dateTo&&invoice.dateTo>=record.dateFrom));
-    const fuelMileage=category==='fuel'&&range?await readFuelMileage(client,vehicles,records):undefined;
-    const allocated=records.map(record=>({...record,allocation:range?(category==='fuel'?allocateFuelAmount(record,range,fuelMileage?.[record.vehicleId]):allocateVehicleAmount(record,range)):null}));
     const last = Math.max(1, Math.ceil(records.length / 100)); page = Math.min(page, last);
+    const start=(page-1)*100,end=page*100;
+    const fuelMileage=category==='fuel'?await readFuelMileage(client,vehicles,range?records:records.slice(start,end)):undefined;
+    const allocated=records.map(record=>({...record,allocation:range?(category==='fuel'?allocateFuelAmount(record,range,fuelMileage?.[record.vehicleId]):allocateVehicleAmount(record,range)):null}));
+    const pageRecords=allocated.slice(start,end).map(record=>category==='fuel'?{...record,workMileage:summarizeFuelWorkMileage(record,range,fuelMileage?.[record.vehicleId])}:record);
     const imports = (await client.query(`select i.file_name,i.period_from::text,i.period_to::text,min(t.work_date)::text as first_date from oak_driver_imports i join oak_driver_tasks t on t.import_id=i.id group by i.id`)).rows;
     const latest = imports.map(item => item.period_from && item.period_to ? { from: item.period_from, to: item.period_to } : resolveDriverBatchPeriod(item.file_name, item.first_date)).sort((a,b) => b.to.localeCompare(a.to))[0];
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
-    return { vehicles, records: allocated.slice((page-1)*100,page*100),fuelMileage,
+    return { vehicles, records:pageRecords,fuelMileage:range?fuelMileage:undefined,
       totalCount: records.length,page,pageSize:100,hasRepairOverlap,totalAmount:hasRepairOverlap||allocated.some(record=>record.allocation?.allocatedAmount===null)?null:allocated.reduce((sum,record) => sum + Math.round((record.allocation?.allocatedAmount??record.amount)*100),0)/100,
       defaultRange: { dateFrom: latest?.from || today, dateTo: latest?.to || today },repairStatus:repairFeed?.status };
   });

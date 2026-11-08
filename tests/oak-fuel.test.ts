@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {allocateFuelAmount,buildFuelMileageContexts,type FuelMileageContext} from '../lib/oak-fuel';
+import {allocateFuelAmount,buildFuelMileageContexts,summarizeFuelWorkMileage,type FuelMileageContext} from '../lib/oak-fuel';
 import {calculateDatedVehicleAccounting,type VehicleAmount} from '../lib/oak-vehicle-amounts';
 import {oakVehicleSeeds} from '../lib/oak-vehicles';
 const month={dateFrom:'2026-08-01',dateTo:'2026-08-31'},week={dateFrom:'2026-08-01',dateTo:'2026-08-07'};
@@ -12,6 +12,29 @@ test('full fuel periods retain their exact budget even before mileage is loaded'
  assert.equal(allocateFuelAmount(source,month).allocatedAmount,5117.87);
  assert.equal(allocateFuelAmount(source,{dateFrom:'2026-07-01',dateTo:'2026-09-30'}).allocatedAmount,5117.87);
  assert.equal(allocateFuelAmount(source,{dateFrom:'2026-09-01',dateTo:'2026-09-30'}).allocatedAmount,0);
+});
+test('fuel detail mileage covers the fee period or the inclusive intersection with the selected dates',()=>{
+ assert.deepEqual(summarizeFuelWorkMileage(month,null,mileage),{...month,miles:6829,pendingReason:undefined});
+ assert.deepEqual(summarizeFuelWorkMileage(month,{dateFrom:'2026-07-28',dateTo:week.dateTo},mileage),{...week,miles:858,pendingReason:undefined});
+ assert.equal(summarizeFuelWorkMileage(month,{dateFrom:'2026-09-01',dateTo:'2026-09-30'},mileage),null);
+ assert.equal(summarizeFuelWorkMileage(month,{dateFrom:month.dateTo,dateTo:month.dateTo},mileage)?.miles,948);
+});
+test('fuel detail distinguishes recorded partial mileage, unknown mileage, and confirmed zero',()=>{
+ const partial={...mileage,coverage:[week],days:mileage.days.filter(item=>item.workDate<=week.dateTo)};
+ const summary=summarizeFuelWorkMileage(month,null,partial);
+ assert.equal(summary?.miles,858);assert.match(summary?.pendingReason||'',/未覆盖完整/);
+ assert.equal(summarizeFuelWorkMileage(month,null,undefined)?.miles,null);
+ assert.equal(summarizeFuelWorkMileage(month,null,{...mileage,days:[...mileage.days,{workDate:'2026-08-20',miles:null}]})?.miles,null);
+ const noWork={dateFrom:'2026-08-01',dateTo:'2026-08-02'};
+ assert.equal(summarizeFuelWorkMileage(month,noWork,mileage)?.miles,0);
+ assert.equal(summarizeFuelWorkMileage(month,noWork,{...mileage,coverage:[]})?.miles,null);
+});
+test('mileage checks gaps in the display interval independently of full-period fuel allocation',()=>{
+ const gap={dateFrom:'2026-08-15',dateTo:'2026-08-21',reason:'周表待同步'};
+ const partial={...mileage,gaps:[gap]};
+ assert.equal(summarizeFuelWorkMileage(month,null,partial)?.pendingReason,gap.reason);
+ assert.deepEqual(summarizeFuelWorkMileage(month,week,partial),{...week,miles:858,pendingReason:undefined});
+ assert.equal(allocateFuelAmount(source,week,partial).allocatedAmount,null);
 });
 test('missing coverage or missing task mileage never silently falls back to time proration',()=>{
  assert.equal(allocateFuelAmount(source,week).allocatedAmount,null);
