@@ -113,7 +113,7 @@ export async function saveIncomeReview(taskId: string, value: unknown) {
     review = { taskId, mode: body.mode, workLabel: incomeText(body.workLabel, 120, body.mode === "label"),
       amount: body.mode === "manual" ? incomeAmount(body.amount) : null,
       includedTaskId: body.mode === "included" ? incomeId(body.includedTaskId) : null,
-      note: incomeText(body.note, 1000, body.mode !== "label") || "" };
+      note: incomeText(body.note, 1000) || "" };
   } catch (error) { throw new IncomeInputError(error instanceof Error ? error.message : "核对内容无效"); }
   await ensureSystemSchema();
   return withSystemClient(async client => {
