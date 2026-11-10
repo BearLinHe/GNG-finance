@@ -79,6 +79,34 @@ export function summarizeIncome(tasks: DriverTask[]): IncomeSummary {
 
 type RatedTask = DriverTask & { income: TaskIncome };
 
+function separatedSck8Returns(candidates: RatedTask[], tasks: RatedTask[], rule: IncomeRule) {
+  if (normalizeIncomeWork(rule.workLabel) !== "SCK8") return null;
+  const departures = candidates.filter(task => task.income.review?.mode !== "included").sort((a, b) => a.sourceRow - b.sourceRow);
+  if (departures.length < 2) return null;
+  const first = departures[0];
+  const sameSheet = (task: RatedTask) => task.importId === first.importId && task.sheetName === first.sheetName
+    && task.section === first.section && task.driverName === first.driverName && task.workDate === first.workDate;
+  const references = new Set(departures.map(task => normalizeIncomeText(task.reference)));
+  if (first.importId == null || references.has("") || references.size !== departures.length || departures.some(task =>
+    !task.id || !sameSheet(task) || normalizeIncomeWork(incomeWorkLabel(task)) !== "SCK8"
+    || normalizeIncomeText(task.fromLocation) !== "SFO" || normalizeIncomeText(task.toLocation) !== "94561"
+    || (task.income.source !== "manual" && (task.income.ruleId !== rule.id || task.income.billingBasis !== "trip")))) return null;
+
+  const returns = new Map<RatedTask, RatedTask>();
+  for (const [index, departure] of departures.entries()) {
+    const leg = tasks.find(task => sameSheet(task) && task.sourceRow === departure.sourceRow + 1);
+    const review = leg?.income.review;
+    if (leg?.id && normalizeIncomeText(leg.fromLocation) === "94561" && normalizeIncomeText(leg.toLocation) === "SFO"
+      && (review ? review.mode === "included" && review.includedTaskId === departure.id : !leg.income.workLabel)) {
+      if (!review) returns.set(leg, departure);
+    } else if (index < departures.length - 1) {
+      // Require a documented return between each pair of departures; the final delivery can have a different follow-up.
+      return null;
+    }
+  }
+  return returns;
+}
+
 function priceR001Trips(tasks: RatedTask[], rules: IncomeRule[], vehicles: OakVehicle[]) {
   if (!vehicles.some(vehicle => vehicle.vehicleNumber === "0527")) return;
   const standards = rules.filter(rule => rule.active && rule.billingBasis === "trip" && !rule.fromLocation && !rule.toLocation
@@ -169,6 +197,7 @@ export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews:
     return { ...task, income };
   });
   const byId = new Map(tasks.filter(task => task.id).map(task => [task.id!, task]));
+  const sck8Returns = new Map<RatedTask, RatedTask>();
   // A repeated trip label may describe several legs, not several billable trips.
   for (const task of tasks) {
     const income = task.income;
@@ -180,10 +209,19 @@ export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews:
       && (!rule.fromLocation || normalizeIncomeText(candidate.fromLocation) === normalizeIncomeText(rule.fromLocation))
       && (!rule.toLocation || normalizeIncomeText(candidate.toLocation) === normalizeIncomeText(rule.toLocation)));
     if (sameTripCandidates.length > 1) {
+      const separated = separatedSck8Returns(sameTripCandidates, tasks, rule);
+      if (separated) {
+        for (const [leg, departure] of separated) sck8Returns.set(leg, departure);
+        continue;
+      }
       income.status = "pending"; income.amount = null;
       income.basis = `${rule.name} · 同日多段匹配整趟标准，需核定主作业及回程归属`;
     }
   }
+  for (const [leg, departure] of sck8Returns) if (departure.income.status === "priced") Object.assign(leg.income, {
+    status: "included", workLabel: "SCK8", amount: 0, source: "included", includedTaskId: departure.id!,
+    basis: `已含在 ${departure.workDate} SCK8 整趟收入中 · 原表第 ${departure.sourceRow} 行`,
+  } satisfies Partial<TaskIncome>);
   priceR001Trips(tasks, rules, vehicles);
   for (const task of tasks) {
     if (task.income.review?.mode !== "included") continue;

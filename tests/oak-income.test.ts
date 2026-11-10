@@ -132,3 +132,42 @@ test("income validation rejects blank, negative, invalid dates and precision; ac
   assert.equal(rulesOverlap(rule(), rule({ fromLocation: "ETS" })), false);
   assert.equal(rulesOverlap(rule(), rule({ active: false })), false);
 });
+
+const sck8Trip = rule({ name: "亚马逊 SCK8", workLabel: "SCK8", billingBasis: "trip", amount: 440 });
+const sck8Out = (id: string, reference: string) =>
+  task(id, { nature: "SCK8直送", reference, fromLocation: "SFO", toLocation: "94561" });
+const sck8Return = task("10", { nature: null, reference: "trailer 519", fromLocation: "94561", toLocation: "SFO" });
+const sck8Departures = [sck8Out("9", "trailer 557"), sck8Return, sck8Out("11", "trailer 307")];
+
+test("a documented return separates two SCK8 deliveries without absorbing a different return job", () => {
+  const differentJob = task("12", { nature: "还柜", fromLocation: "94561", toLocation: "ETS" });
+  const [rated] = priceDriverDays([day([...sck8Departures, differentJob])], [sck8Trip], []);
+  assert.deepEqual(rated.tasks.map(task => task.income?.amount), [440, 0, 440, null]);
+  assert.deepEqual(rated.tasks.map(task => task.income?.status), ["priced", "included", "priced", "pending"]);
+  assert.equal(rated.tasks[1].income?.includedTaskId, "9");
+  assert.equal(rated.tasks[1].nature, null);
+  assert.equal(rated.revenue?.amount, 880);
+});
+
+test("SCK8 departures with ambiguous or separately priced intervening legs stay pending", () => {
+  for (const intervening of [
+    { ...sck8Return, toLocation: "ETS" }, { ...sck8Return, section: "Local" },
+    { ...sck8Return, nature: "还柜" }, { ...sck8Return, sourceRow: 8 },
+  ]) {
+    const [rated] = priceDriverDays([day([sck8Departures[0], intervening, sck8Departures[2]])], [sck8Trip], []);
+    assert.equal(rated.revenue?.pricedCount, 0);
+  }
+  const duplicate = { ...sck8Departures[2], reference: sck8Departures[0].reference };
+  assert.equal(priceDriverDays([day([sck8Departures[0], sck8Return, duplicate])], [sck8Trip], [])[0].revenue?.pricedCount, 0);
+  const [rated] = priceDriverDays([day(sck8Departures)], [sck8Trip], [review("10", { amount: 60 })]);
+  assert.deepEqual(rated.tasks.map(task => task.income?.amount), [null, 60, null]);
+});
+
+test("SCK8 split preserves explicit inclusions, and other warehouse standards retain the existing review guard", () => {
+  const inclusion = review("10", { mode: "included", amount: null, includedTaskId: "9", note: "回程" });
+  const [rated] = priceDriverDays([day(sck8Departures)], [sck8Trip], [inclusion]);
+  assert.deepEqual(rated.tasks.map(task => task.income?.amount), [440, 0, 440]);
+  assert.equal(rated.tasks[1].income?.review, inclusion);
+  const other = sck8Departures.map(task => ({ ...task, nature: task.nature ? "SCK4直送" : null }));
+  assert.equal(priceDriverDays([day(other)], [{ ...sck8Trip, workLabel: "SCK4" }], [])[0].revenue?.pricedCount, 0);
+});
