@@ -58,6 +58,17 @@ test('wages without extracted work produce pending income in both views, not fal
  const sources=[{fileHash:'hash',sheetNames:['Original']}];assert.equal(incomeActivityGaps([wages],sources,range).length,0);
  assert.equal(calculateDatedVehicleAccounting(vehicle,range,tasks,[],null,'hash',[wages],undefined,sources).lines.income.amount,440);
 });
+test('a wage coverage warning keeps its original payroll period separate from actual task dates',()=>{
+ const wages={...record('labor',700),payroll:{fileName:'week.xlsx',fileHash:'hash',sheetName:'Original',candidate:{id:'x',label:'check',amount:700,cells:[]},originalAmount:700,confirmedAmount:700,warnings:[],note:''}};
+ const filtered={dateFrom:'2026-10-04',dateTo:'2026-10-07'};
+ const rows=buildVehicleIncomeRows([vehicle],rated([task('1','2026-10-05')]),[wages],filtered,[]);
+ const warning=rows.find(row=>row.activityGap)!;
+ assert.deepEqual(warning.payrollPeriod,range);
+ assert.equal(warning.dateFrom,filtered.dateFrom);
+ assert.equal(warning.task,undefined);
+ assert.equal(rows.find(row=>row.task)?.dateFrom,'2026-10-05');
+ assert.equal(rows.find(row=>row.task)?.payrollPeriod,undefined);
+});
 test('manual income coverage unions inclusive dates and a deliberate zero resolves missing work',()=>{
  const wages={...record('labor',700),payroll:{fileName:'week.xlsx',fileHash:'hash',sheetName:'Original',candidate:{id:'x',label:'check',amount:700,cells:[]},originalAmount:700,confirmedAmount:700,warnings:[],note:''}};
  const records=[wages,record('income',0,{dateFrom:'2026-10-03',dateTo:'2026-10-05'}),record('income',400,{dateFrom:'2026-10-06',dateTo:'2026-10-09'})];

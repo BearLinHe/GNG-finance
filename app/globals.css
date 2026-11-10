@@ -2065,6 +2065,9 @@ button {
 .oak-payroll-evidence table { width:100%;min-width:0; }
 .oak-payroll-evidence td { white-space:normal;overflow-wrap:anywhere; }
 .oak-payroll-activity-legs small { display:block;margin-top:3px;color:var(--muted); }
+.oak-payroll-activity-header { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 14px; }
+.oak-payroll-activity-header small,.oak-payroll-activity-batch small { display:block;margin-top:4px;color:var(--muted); }
+.oak-payroll-evidence .oak-payroll-activity-batch { min-width:600px; }
 .oak-income-dialog:has(> .oak-payroll-preview-scroll) > .error { margin:10px 16px;flex:0 0 auto; }
 @media(max-width:680px) {
   .oak-payroll-preview-head { padding:12px; }

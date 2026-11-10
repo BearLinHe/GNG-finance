@@ -10,7 +10,7 @@ export type VehicleIncomeDateOrder='asc'|'desc';
 export const vehicleIncomeStatusLabels:Record<VehicleIncomeStatus,string>={auto:'自动计价',reviewed:'人工核定',pending:'待审核',included:'已含整趟',replaced:'周期收入覆盖',manual:'周期核定',unlinked:'未关联车辆'};
 export type VehicleIncomeRow={id:string;vehicleId:string|null;driverName:string;vehicleNumber:string|null;dateFrom:string;dateTo:string;
   label:string;reference:string;fromLocation:string|null;toLocation:string|null;amount:number|null;originalAmount:number|null;
-  status:VehicleIncomeStatus;basis:string;task?:DriverTask;day?:DriverDay;record?:VehicleAmount;activityGap?:boolean};
+  status:VehicleIncomeStatus;basis:string;task?:DriverTask;day?:DriverDay;record?:VehicleAmount;activityGap?:boolean;payrollPeriod?:VehicleRange};
 export type VehicleIncomeResponse={vehicles:OakVehicle[];rows:VehicleIncomeRow[];totalCount:number;page:number;pageSize:number;range:VehicleRange;
   summary:{knownAmount:number;amount:number|null;pendingCount:number;includedCount:number;replacedCount:number;taskCount:number;manualCount:number};
   days?:DriverDay[]};
@@ -33,9 +33,14 @@ export function buildVehicleIncomeRows(vehicles:OakVehicle[],tasks:DriverTask[],
     rows.push({id:`manual-${record.id}`,vehicleId:vehicle.id,vehicleNumber:vehicle.vehicleNumber,driverName:vehicle.driverName,dateFrom:record.dateFrom,dateTo:record.dateTo,
       label:'周期收入核定',reference:record.note,fromLocation:null,toLocation:null,amount:allocateVehicleAmount(record,range).allocatedAmount,originalAmount:record.amount,status:'manual',basis:record.note,record});
   }
-  if(sources)for(const gap of incomeActivityGaps(records,sources,range)){const vehicle=vehicles.find(vehicle=>vehicle.id===gap.vehicleId);if(!vehicle)continue;
-    rows.push({id:`gap-${gap.id}`,vehicleId:vehicle.id,vehicleNumber:vehicle.vehicleNumber,driverName:vehicle.driverName,dateFrom:gap.dateFrom,dateTo:gap.dateTo,label:'作业待同步',reference:gap.fileName,
-      fromLocation:null,toLocation:null,amount:null,originalAmount:null,status:'pending',basis:`${gap.sheetName} 的工资已入账，尚未确认关联的周表作业`,activityGap:true});
+  if(sources){
+    const wages=new Map(records.filter(record=>record.category==='labor').map(record=>[record.id,record]));
+    for(const gap of incomeActivityGaps(records,sources,range)){
+      const vehicle=vehicles.find(vehicle=>vehicle.id===gap.vehicleId),wage=wages.get(gap.id);if(!vehicle||!wage)continue;
+      rows.push({id:`gap-${gap.id}`,vehicleId:vehicle.id,vehicleNumber:vehicle.vehicleNumber,driverName:vehicle.driverName,dateFrom:gap.dateFrom,dateTo:gap.dateTo,label:'周表关联待核对',reference:gap.fileName,
+        fromLocation:null,toLocation:null,amount:null,originalAmount:null,status:'pending',basis:`${gap.sheetName} 的工资已入账，尚未确认关联的周表作业`,activityGap:true,
+        payrollPeriod:{dateFrom:wage.dateFrom,dateTo:wage.dateTo}});
+    }
   }
   return rows.sort((a,b)=>(dateOrder==='asc'?1:-1)*a.dateFrom.localeCompare(b.dateFrom)
     ||a.driverName.localeCompare(b.driverName,'zh-CN')||a.id.localeCompare(b.id,undefined,{numeric:true}));

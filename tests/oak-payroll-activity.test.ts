@@ -2,7 +2,7 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {incomeActivityGaps} from '../lib/oak-income-coverage';
 import {buildFuelMileageContexts} from '../lib/oak-fuel';
-import {payrollActivityCandidate} from '../lib/oak-payroll-activity-db';
+import {payrollActivityCandidate,selectPayrollActivityBatch} from '../lib/oak-payroll-activity-db';
 import type {VehicleAmount} from '../lib/oak-vehicle-amounts';
 import {oakVehicleSeeds} from '../lib/oak-vehicles';
 
@@ -52,4 +52,16 @@ test('confirmation token changes if the wage or reviewed job evidence changes',(
  assert.notEqual(payrollActivityCandidate({...unlinkedWage,version:2},[firstLeg,returnLeg],[vehicle])?.token,token);
  assert.notEqual(payrollActivityCandidate(unlinkedWage,[firstLeg,{...returnLeg,miles:78}],[vehicle])?.token,token);
  assert.notEqual(payrollActivityCandidate(unlinkedWage,[firstLeg],[vehicle])?.token,token);
+});
+
+test('batch confirmation requires explicit fresh selections for eligible, numbered vehicles only',()=>{
+ const candidate=payrollActivityCandidate(unlinkedWage,[firstLeg,returnLeg],[vehicle])!;
+ const entry={wage:unlinkedWage,vehicle,candidate,sameFile:false};
+ const selection={wageId:unlinkedWage.id,token:candidate.token};
+ assert.deepEqual(selectPayrollActivityBatch([entry],[selection]),[{wage:unlinkedWage,target}]);
+ for(const input of [[],[selection,selection],[{...selection,wageId:'99'}],[{...selection,token:'stale'}]]){
+  assert.throws(()=>selectPayrollActivityBatch([entry],input));
+ }
+ assert.throws(()=>selectPayrollActivityBatch([{...entry,vehicle:{...vehicle,vehicleNumber:null}}],[selection]),/车号未确认/);
+ assert.throws(()=>selectPayrollActivityBatch([entry,{...entry,wage:{...unlinkedWage,id:'71'}}],[selection]),/重新核对/);
 });
