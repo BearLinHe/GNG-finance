@@ -1,7 +1,15 @@
 import type {PoolClient} from 'pg';
 import type {OakVehicle} from './oak-vehicles';
 import type {VehicleAmount} from './oak-vehicle-amounts';
-import {buildFuelMileageContexts,type FuelMileageContext} from './oak-fuel';
+import type {VehicleRange} from './oak-vehicle-accounting';
+import {buildFuelMileageContexts,sumRecordedVehicleMiles,type FuelMileageContext} from './oak-fuel';
+
+export async function readRecordedVehicleMiles(client:PoolClient,vehicles:OakVehicle[],vehicleId:string,range?:VehicleRange){
+ const {rows}=await client.query<{driverName:string;miles:number}>(`select driver_name as "driverName",sum(miles)::float8 as miles
+   from oak_driver_tasks where miles>=0 and miles<>'NaN'::numeric
+   and ($1::date is null or work_date between $1::date and $2::date) group by driver_name`,[range?.dateFrom??null,range?.dateTo??null]);
+ return sumRecordedVehicleMiles(vehicles,rows,vehicleId);
+}
 
 export async function readFuelMileage(client:PoolClient,vehicles:OakVehicle[],records:VehicleAmount[]):Promise<Record<string,FuelMileageContext>>{
  const fuel=records.filter(record=>record.category==='fuel');if(!fuel.length)return {};

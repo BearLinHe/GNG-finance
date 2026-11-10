@@ -6,8 +6,8 @@ import { allocateVehicleAmount, amountCategories, validateVehicleAmount, type Ve
 import { vehicleRange, type VehicleRange } from "./oak-vehicle-accounting";
 import { resolveDriverBatchPeriod } from "./oak-driver-batch";
 import {readRepairFeed} from './oak-repair-db';
-import {readFuelMileage} from './oak-fuel-db';
-import {allocateFuelAmount,fuelPeriodKey,summarizeFuelPeriods} from './oak-fuel';
+import {readFuelMileage,readRecordedVehicleMiles} from './oak-fuel-db';
+import {allocateFuelAmount,summarizeFuelLedger,summarizeFuelWorkMileage} from './oak-fuel';
 
 const columns = `id::text,vehicle_id as "vehicleId",category,date_from::text as "dateFrom",date_to::text as "dateTo",amount::float8,payee_type as "payeeType",note,version,request_key as "requestKey",source_review_id::text as "sourceReviewId",updated_at::text as "updatedAt",payroll_source as payroll`;
 export async function readVehicleAmounts(client: PoolClient, range?: VehicleRange): Promise<VehicleAmount[]> {
@@ -41,13 +41,12 @@ export async function listVehicleAmounts(params: URLSearchParams) {
     const start=(page-1)*100,end=page*100;
     const fuelMileage=category==='fuel'?await readFuelMileage(client,vehicles,range?records:records.slice(start,end)):undefined;
     const allocated=records.map(record=>({...record,allocation:range?(category==='fuel'?allocateFuelAmount(record,range,fuelMileage?.[record.vehicleId]):allocateVehicleAmount(record,range)):null}));
-    const pageSlice=allocated.slice(start,end);
-    const fuelPeriods=fuelMileage?summarizeFuelPeriods(pageSlice,scopedRecords,range,fuelMileage):null;
-    const pageRecords=fuelPeriods?pageSlice.map(record=>({...record,...fuelPeriods.get(fuelPeriodKey(record))})):pageSlice;
+    const pageRecords=allocated.slice(start,end).map(record=>category==='fuel'?{...record,workMileage:summarizeFuelWorkMileage(record,range,fuelMileage?.[record.vehicleId])}:record);
+    const fuelSummary=category==='fuel'?summarizeFuelLedger(scopedRecords,await readRecordedVehicleMiles(client,vehicles,vehicleId,range)):undefined;
     const imports = (await client.query(`select i.file_name,i.period_from::text,i.period_to::text,min(t.work_date)::text as first_date from oak_driver_imports i join oak_driver_tasks t on t.import_id=i.id group by i.id`)).rows;
     const latest = imports.map(item => item.period_from && item.period_to ? { from: item.period_from, to: item.period_to } : resolveDriverBatchPeriod(item.file_name, item.first_date)).sort((a,b) => b.to.localeCompare(a.to))[0];
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
-    return { vehicles, records:pageRecords,fuelMileage:range?fuelMileage:undefined,
+    return { vehicles, records:pageRecords,fuelMileage:range?fuelMileage:undefined,fuelSummary,
       totalCount: records.length,page,pageSize:100,hasRepairOverlap,totalAmount:hasRepairOverlap||allocated.some(record=>record.allocation?.allocatedAmount===null)?null:allocated.reduce((sum,record) => sum + Math.round((record.allocation?.allocatedAmount??record.amount)*100),0)/100,
       defaultRange: { dateFrom: latest?.from || today, dateTo: latest?.to || today },repairStatus:repairFeed?.status };
   });

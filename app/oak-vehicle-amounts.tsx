@@ -12,14 +12,14 @@ import OakRepairDetails from './oak-repair-details';
 import type {RepairDetails} from '@/lib/oak-repair';
 import OakPayrollUpload,{PayrollSourceDetails} from './oak-payroll-upload';
 import type {PayrollSource} from '@/lib/oak-payroll';
-import {allocateFuelAmount,fuelPeriodKey,type FuelMileageContext,type FuelUnitCost,type FuelWorkMileage} from '@/lib/oak-fuel';
+import {allocateFuelAmount,type FuelLedgerSummary,type FuelMileageContext,type FuelWorkMileage} from '@/lib/oak-fuel';
 
 export type AmountSelection=VehicleRange&{vehicleId:string;payeeType?:"driver"|"owner"};
-type Form={key:string;id:string|null;vehicleId:string;dateFrom:string;dateTo:string;amount:string;note:string;payeeType:"driver"|"owner";version:number;requestKey:string;source?:'manual'|'repair';repair?:RepairDetails;payroll?:PayrollSource;workMileage?:FuelWorkMileage|null;fuelUnitCost?:FuelUnitCost};
+type Form={key:string;id:string|null;vehicleId:string;dateFrom:string;dateTo:string;amount:string;note:string;payeeType:"driver"|"owner";version:number;requestKey:string;source?:'manual'|'repair';repair?:RepairDetails;payroll?:PayrollSource;workMileage?:FuelWorkMileage|null};
 type Meta={forms:Record<string,Form>;vehicles:OakVehicle[];range:VehicleRange|null;category:VehicleAmountCategory;dirty:Record<string,boolean>;busy:Record<string,boolean>;errors:Record<string,string>;
   fuelMileage?:Record<string,FuelMileageContext>;
   update:(key:string,field:keyof Form,value:string)=>void;save:(key:string,force?:boolean)=>void;remove:(key:string)=>void;moveRow:(from:string,to:string)=>void;openRepair:(repair:RepairDetails)=>void;openPayroll:(source:PayrollSource)=>void};
-const toForm=(record:VehicleAmountsResponse['records'][number]):Form=>({key:`entry-${record.requestKey}`,id:record.id,vehicleId:record.vehicleId,dateFrom:record.dateFrom,dateTo:record.dateTo,amount:record.amount.toFixed(2),note:record.note,payeeType:record.payeeType||"driver",version:record.version,requestKey:record.requestKey,source:record.source,repair:record.repair,payroll:record.payroll,workMileage:record.workMileage,fuelUnitCost:record.fuelUnitCost});
+const toForm=(record:VehicleAmountsResponse['records'][number]):Form=>({key:`entry-${record.requestKey}`,id:record.id,vehicleId:record.vehicleId,dateFrom:record.dateFrom,dateTo:record.dateTo,amount:record.amount.toFixed(2),note:record.note,payeeType:record.payeeType||"driver",version:record.version,requestKey:record.requestKey,source:record.source,repair:record.repair,payroll:record.payroll,workMileage:record.workMileage});
 const mileageFormat=new Intl.NumberFormat('en-US',{maximumFractionDigits:2});
 const fuelRateFormat=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:3,maximumFractionDigits:3});
 function mileageInScope(record:Form,range:VehicleRange|null){
@@ -30,7 +30,7 @@ function mileageInScope(record:Form,range:VehicleRange|null){
 }
 function WorkMileageCell({record,meta}:{record:Form;meta:Meta}){
   const form=meta.forms[record.key]||record,mileage=mileageInScope(record,meta.range);
-  if(!record.id||fuelPeriodKey(form)!==fuelPeriodKey(record))
+  if(!record.id||form.vehicleId!==record.vehicleId||form.dateFrom!==record.dateFrom||form.dateTo!==record.dateTo)
     return <div className="oak-allocation-cell"><small>保存后统计</small></div>;
   if(!mileage)return <div className="oak-allocation-cell">—</div>;
   return <div className="oak-allocation-cell" title={[`${mileage.dateFrom} 至 ${mileage.dateTo}`,mileage.pendingReason].filter(Boolean).join(' · ')}>
@@ -38,16 +38,15 @@ function WorkMileageCell({record,meta}:{record:Form;meta:Meta}){
     {mileage.miles!=null&&mileage.pendingReason?<small>仅已记录里程</small>:null}
   </div>;
 }
-function FuelUnitCostCell({record,meta}:{record:Form;meta:Meta}){
-  const form=meta.forms[record.key]||record,mileage=mileageInScope(record,meta.range),cost=record.fuelUnitCost;
-  if(!record.id||fuelPeriodKey(form)!==fuelPeriodKey(record)||form.amount!==record.amount)
-    return <div className="oak-allocation-cell"><small>保存后计算</small></div>;
-  if(!mileage||!cost)return <div className="oak-allocation-cell">—</div>;
-  const calculation=cost.amount!=null&&mileage.miles!=null?`${incomeMoney(cost.amount)} ÷ ${mileageFormat.format(mileage.miles)} mi`:null;
-  const title=[`${mileage.dateFrom} 至 ${mileage.dateTo}`,`已保存同车同周期 ${cost.recordCount} 笔`,calculation,cost.pendingReason].filter(Boolean).join(' · ');
-  return <div className="oak-allocation-cell" title={title}>
-    <strong className={cost.rate==null?'pending':undefined}>{cost.rate==null?'待核对':`${fuelRateFormat.format(cost.rate)}/mi`}</strong>
-    {cost.recordCount>1?<small>同周期 {cost.recordCount} 笔</small>:null}
+function FuelSummary({summary}:{summary?:FuelLedgerSummary}){
+  return <div className="oak-fuel-summary" aria-label="所选车辆和日期的油费汇总">
+    <div className="oak-amount-filter-total oak-cost-color" title="按所选车辆和日期匹配的油费明细原金额合计，未按里程分摊">
+      <span>油费明细合计</span><strong>{summary?incomeMoney(summary.amount):'—'}</strong>
+    </div>
+    <div className="oak-amount-filter-total" title={summary?`${incomeMoney(summary.amount)} ÷ ${mileageFormat.format(summary.miles)} mi`:undefined}>
+      <span>总油费 / mi</span><strong>{summary?.rate==null?'—':`${fuelRateFormat.format(summary.rate)}/mi`}</strong>
+      <small>{summary?`${mileageFormat.format(summary.miles)} mi · 已记录`:'—'}</small>
+    </div>
   </div>;
 }
 function Field({record,field,meta}:{record:Form;field:"vehicleId"|"dateFrom"|"dateTo"|"amount"|"note"|"payeeType";meta:Meta}){
@@ -71,6 +70,8 @@ export default forwardRef<VehicleAmountsHandle,Props>(function OakVehicleAmounts
   const [repairDetails,setRepairDetails]=useState<RepairDetails|null>(null);
   const [payrollDetails,setPayrollDetails]=useState<PayrollSource|null>(null),[reload,setReload]=useState(0);
   const latest=useRef({forms,dirty});latest.current={forms,dirty};const sequence=useRef(0);
+  const loadedFuelScope=useRef('');
+  const fuelScope=JSON.stringify([vehicleId,dateFrom,dateTo]);
   const revisions=useRef<Record<string,number>>({}),saves=useRef<Partial<Record<string,Promise<boolean>>>>({}),queued=useRef<Record<string,boolean>>({});
   const readyForms=useRef<Record<string,{form:Form;revision:number;force:boolean}>>({});
   const range=dateFrom&&dateTo?{dateFrom,dateTo}:null;
@@ -81,11 +82,12 @@ export default forwardRef<VehicleAmountsHandle,Props>(function OakVehicleAmounts
       const params=new URLSearchParams({category,vehicleId,dateFrom,dateTo,search,page:String(page)});
       const result=await json<VehicleAmountsResponse>(await fetch(`/api/oak-vehicle-amounts?${params}`,{cache:'no-store'}));
       if(id!==sequence.current)return;
+      loadedFuelScope.current=fuelScope;
       setData(result);setPage(result.page);
       setForms(previous=>{const next={...previous};for(const record of result.records){const form=toForm(record);if(!latest.current.dirty[form.key])next[form.key]=form;}latest.current.forms=next;return next;});
     }catch(e){if(id===sequence.current){setError((e as Error).message);throw e;}}
     finally{if(id===sequence.current)setLoading(false);}
-  },[category,vehicleId,dateFrom,dateTo,search,page,reload]);
+  },[category,vehicleId,dateFrom,dateTo,search,page,reload,fuelScope]);
   const currentLoad=useRef(load);currentLoad.current=load;
   useEffect(()=>{const timer=window.setTimeout(()=>void load().catch(()=>{}),250);return()=>{window.clearTimeout(timer);sequence.current++;};},[load]);
   const dirtyCount=Object.values(dirty).filter(Boolean).length;
@@ -133,20 +135,17 @@ export default forwardRef<VehicleAmountsHandle,Props>(function OakVehicleAmounts
     {id:'dateTo',header:category==='income'?'收入结束日期':'费用结束日期',size:145,cell:context=><Field record={context.row.original} field="dateTo" meta={context.table.options.meta as Meta}/>},
     ...(category==='labor'?[{id:'payeeType',header:'报酬类型',size:120,cell:(context:any)=><Field record={context.row.original} field="payeeType" meta={context.table.options.meta as Meta}/>}]:[]),
     {id:'amount',header:category==='income'?'本笔收入 / USD':'本笔费用 / USD',size:140,cell:context=><Field record={context.row.original} field="amount" meta={context.table.options.meta as Meta}/>},
-    ...(category==='fuel'?[
-      {id:'workMileage',header:'工单 mile 数',size:130,cell:context=><WorkMileageCell record={context.row.original} meta={context.table.options.meta as Meta}/>},
-      {id:'fuelUnitCost',header:'油费 / mi',size:120,cell:context=><FuelUnitCostCell record={context.row.original} meta={context.table.options.meta as Meta}/>},
-    ] satisfies ColumnDef<Form>[]:[]),
+    ...(category==='fuel'?[{id:'workMileage',header:'工单 mile 数',size:130,cell:context=><WorkMileageCell record={context.row.original} meta={context.table.options.meta as Meta}/>} satisfies ColumnDef<Form>]:[]),
     ...(category==='maintenance'?[]:[{id:'allocation',header:'计入核算金额',size:155,cell:(context:any)=>{
       const meta=context.table.options.meta as Meta,form=meta.forms[context.row.original.key]||context.row.original;
       const valid=form.dateFrom&&form.dateTo&&form.dateFrom<=form.dateTo&&form.amount!==''&&Number.isFinite(Number(form.amount));
       const record={...form,amount:Number(form.amount)};
       const result=meta.range&&valid?(meta.category==='fuel'?allocateFuelAmount(record,meta.range,meta.fuelMileage?.[form.vehicleId]):allocateVehicleAmount(record,meta.range)):null;
       const fuel=result&&'basis' in result?result:null;
-      const basis=fuel?fuel.pendingReason||(fuel.periodMiles!=null?`${fuel.rangeMiles} / ${fuel.periodMiles} mi · $${fuel.unitPrice?.toFixed(6)}/mi`:'整笔周期费用'):result?`${result.overlapDays} / ${result.totalDays} 天`:'全部日期';
+      const basis=fuel?fuel.pendingReason||(fuel.periodMiles!=null?`${fuel.rangeMiles} / ${fuel.periodMiles} mi`:'整笔周期费用'):result?`${result.overlapDays} / ${result.totalDays} 天`:'全部日期';
       return <div className="oak-allocation-cell" title={basis}><strong>{result?result.allocatedAmount==null?'待核对':incomeMoney(result.allocatedAmount):valid?incomeMoney(Number(form.amount)):'—'}</strong><small>{fuel?.pendingReason?'里程待补':fuel?.periodMiles!=null?`${fuel.rangeMiles} / ${fuel.periodMiles} mi`:basis}</small></div>;
     }}]),
-    {id:'note',header:'单据 / 备注',size:Math.max(category==='fuel'?180:260,containerWidth-(category==='labor'?1025:category==='maintenance'?750:category==='fuel'?1155:905)),cell:context=>{const record=context.row.original;const meta=context.table.options.meta as Meta;return <div className="oak-payroll-note"><Field record={record} field="note" meta={meta}/>{record.payroll?<button className="icon-button" title={`查看工资原表 ${record.payroll.sheetName}`} onClick={()=>meta.openPayroll(record.payroll!)}><FileText size={15}/></button>:null}</div>;}},
+    {id:'note',header:'单据 / 备注',size:Math.max(260,containerWidth-(category==='labor'?1025:category==='maintenance'?750:category==='fuel'?1035:905)),cell:context=>{const record=context.row.original;const meta=context.table.options.meta as Meta;return <div className="oak-payroll-note"><Field record={record} field="note" meta={meta}/>{record.payroll?<button className="icon-button" title={`查看工资原表 ${record.payroll.sheetName}`} onClick={()=>meta.openPayroll(record.payroll!)}><FileText size={15}/></button>:null}</div>;}},
     {id:'actions',header:'保存状态',size:100,cell:context=>{const record=context.row.original,key=record.key;const meta=context.table.options.meta as Meta;if(record.source==='repair'&&record.repair)return <div className="oak-amount-actions"><button className="icon-button" title={`查看维修账单 ${record.repair.invoiceNumber}`} onClick={()=>meta.openRepair(record.repair!)}><FileText size={16}/></button><small className="oak-source-tag">维修库</small></div>;return <div className="oak-amount-actions"><button className="icon-button" title={`保存明细 ${key}`} disabled={meta.busy[key]} onClick={()=>meta.save(key,true)}><Save size={16}/></button><button className="icon-button danger-icon" title={`删除明细 ${key}`} disabled={meta.busy[key]} onMouseDown={event=>event.preventDefault()} onClick={()=>meta.remove(key)}><Trash2 size={15}/></button><small className={meta.errors[key]?'loss':meta.busy[key]||meta.dirty[key]?'pending':'profit'}>{meta.errors[key]||(meta.busy[key]?'保存中':meta.dirty[key]?'待保存':'已保存')}</small></div>;}}
   ],[category,containerWidth]);
   const tableData=useMemo(()=>{const records=(data?.records||[]).map(record=>toForm(record));const keys=new Set(records.map(record=>record.key));const pinned=newKeys.map(key=>forms[key]).filter(form=>form&&(!form.id||dirty[form.key]||keys.has(form.key)));return [...new Map([...pinned,...records].map(form=>[form.key,form])).values()];},[newKeys,forms,data,dirty]);
@@ -163,11 +162,10 @@ export default forwardRef<VehicleAmountsHandle,Props>(function OakVehicleAmounts
   function exportCsv(){
     if(!data)return;const cell=(value:unknown)=>`"${(typeof value==='number'?String(value):String(value??'').replace(/^[\s]*[=+@-]/,"'$&")).replace(/"/g,'""')}"`;
     const fuel=category==='fuel';
-    const lines=[['车号','司机','开始日期','结束日期','本笔金额',...(fuel?['工单 mile 数','里程统计区间','里程状态','油费 / mi','单价状态']:[]),...(category==='maintenance'?[]:['计入核算金额']),...(fuel?['分摊状态']:[]),'备注'],...data.records.map(record=>{
-      const vehicle=data.vehicles.find(item=>item.id===record.vehicleId),mileage=record.workMileage,cost=record.fuelUnitCost;
+    const lines=[['车号','司机','开始日期','结束日期','本笔金额',...(fuel?['工单 mile 数','里程统计区间','里程状态']:[]),...(category==='maintenance'?[]:['计入核算金额']),...(fuel?['分摊状态']:[]),'备注'],...data.records.map(record=>{
+      const vehicle=data.vehicles.find(item=>item.id===record.vehicleId),mileage=record.workMileage;
       return[vehicle?.vehicleNumber,vehicle?.driverName,record.dateFrom,record.dateTo,record.amount,
-        ...(fuel?[mileage?.miles,mileage?`${mileage.dateFrom} 至 ${mileage.dateTo}`:'',mileage?.pendingReason||(mileage?'完整':''),
-          cost?.rate==null?null:Number(cost.rate.toFixed(3)),cost?.pendingReason||(cost?`同车同周期 ${cost.recordCount} 笔`:'')]:[]),
+        ...(fuel?[mileage?.miles,mileage?`${mileage.dateFrom} 至 ${mileage.dateTo}`:'',mileage?.pendingReason||(mileage?'完整':'')]:[]),
         ...(category==='maintenance'?[]:[record.allocation?record.allocation.allocatedAmount:record.amount]),
         ...(fuel?[record.allocation&&'pendingReason' in record.allocation?record.allocation.pendingReason||'按作业里程分摊':'整笔周期费用']:[]),record.note];
     })];
@@ -175,7 +173,7 @@ export default forwardRef<VehicleAmountsHandle,Props>(function OakVehicleAmounts
   }
   return <section className="oak-vehicle-workspace oak-amount-workspace" aria-label={`${amountCategoryLabels[category]}周期明细`}>
     <div className="oak-inline-toolbar"><div className="oak-ledger-title"><h2>{amountCategoryLabels[category]}</h2><span>{data?.totalCount||0} 笔 <b>USD</b>{dirtyCount?` · ${dirtyCount} 笔未保存`:''}</span></div><div className="oak-accounting-search"><Search size={17}/><input aria-label="搜索费用明细" placeholder="搜索车号、司机、单据或备注" value={search} onChange={event=>{setSearch(event.target.value);setPage(1);}}/>{search?<button className="icon-button" title="清空明细搜索" onClick={()=>setSearch('')}><X size={14}/></button>:null}</div><button className="button ghost" disabled={loading||Boolean(dirtyCount)} onClick={exportCsv}><Download size={15}/>导出</button><button className="button primary" disabled={!data} onClick={add}><Plus size={16}/>新增明细</button>{category==='labor'?<OakPayrollUpload disabled={!data||loading||Boolean(dirtyCount)} onImported={range=>{setVehicleId('');setDateFrom(range.dateFrom);setDateTo(range.dateTo);setSearch('');setPage(1);setReload(value=>value+1);}}/>:null}</div>
-    <div className="oak-amount-filters"><label>车辆<select aria-label="明细车辆筛选" value={vehicleId} onChange={event=>{setVehicleId(event.target.value);setPage(1);}}><option value="">全部车辆</option>{data?.vehicles.map(vehicle=><option key={vehicle.id} value={vehicle.id}>{vehicle.vehicleNumber||'暂无'} · {vehicle.driverName}</option>)}</select></label><label>核算区间开始<input aria-label="明细核算开始" type="date" value={dateFrom} onChange={event=>{setDateFrom(event.target.value);setPage(1);}}/></label><label>核算区间结束<input aria-label="明细核算结束" type="date" value={dateTo} onChange={event=>{setDateTo(event.target.value);setPage(1);}}/></label><button className="icon-button" title="清空核算区间" onClick={()=>{setDateFrom('');setDateTo('');setPage(1);}}><X size={15}/></button><div className={`oak-amount-filter-total ${category==='income'?'profit':'oak-cost-color'}`}><span>{loading?'读取中':range?'区间分摊合计':'明细合计'}</span><strong>{loading?'—':data?.totalAmount==null?'待核对':incomeMoney(data.totalAmount)}</strong></div></div>
+    <div className="oak-amount-filters"><label>车辆<select aria-label="明细车辆筛选" value={vehicleId} onChange={event=>{setVehicleId(event.target.value);setPage(1);}}><option value="">全部车辆</option>{data?.vehicles.map(vehicle=><option key={vehicle.id} value={vehicle.id}>{vehicle.vehicleNumber||'暂无'} · {vehicle.driverName}</option>)}</select></label><label>核算区间开始<input aria-label="明细核算开始" type="date" value={dateFrom} onChange={event=>{setDateFrom(event.target.value);setPage(1);}}/></label><label>核算区间结束<input aria-label="明细核算结束" type="date" value={dateTo} onChange={event=>{setDateTo(event.target.value);setPage(1);}}/></label><button className="icon-button" title="清空核算区间" onClick={()=>{setDateFrom('');setDateTo('');setPage(1);}}><X size={15}/></button>{category==='fuel'?<FuelSummary summary={loadedFuelScope.current===fuelScope&&!error?data?.fuelSummary:undefined}/>:<div className={`oak-amount-filter-total ${category==='income'?'profit':'oak-cost-color'}`}><span>{loading?'读取中':range?'区间分摊合计':'明细合计'}</span><strong>{loading?'—':data?.totalAmount==null?'待核对':incomeMoney(data.totalAmount)}</strong></div>}</div>
     {error?<div className="error" role="alert">{error}</div>:null}
     {data?.repairStatus?<div className={`oak-repair-status${data.repairStatus.available?'':' pending'}`} role="status"><span className="oak-source-dot"/>{data.repairStatus.message}{data.repairStatus.available?` · ${data.repairStatus.matchedVehicleIds.length} 辆车号匹配 · 完工日期计入核算`:''}{data.repairStatus.warnings.length?` · ${data.repairStatus.warnings.length} 项待核对`:''}</div>:null}
     {data?.hasRepairOverlap?<div className="error" role="alert">人工维修总额与维修库账单周期重叠，合计及盈亏暂不确认，请核对是否重复。</div>:null}

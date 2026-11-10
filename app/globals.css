@@ -1343,6 +1343,9 @@ button {
 .oak-amount-filter-total { display:grid;gap:5px;min-width:120px;margin-left:auto;text-align:right; }
 .oak-amount-filter-total > span { font-size:11px;color:#718297; }
 .oak-amount-filter-total > strong { font-size:20px;font-variant-numeric:tabular-nums; }
+.oak-fuel-summary { display:flex;align-items:flex-start;justify-content:flex-end;flex-wrap:wrap;gap:12px 22px;margin-left:auto; }
+.oak-fuel-summary .oak-amount-filter-total { margin-left:0; }
+.oak-fuel-summary small { font-size:11px;color:var(--muted); }
 .oak-amount-table-scroll { max-height:calc(100dvh - 380px);min-height:200px; }
 .oak-amount-table { width:100%;min-width:1080px;table-layout:fixed;border-collapse:separate;border-spacing:0; }
 .oak-amount-table.has-labor { min-width:1200px; }
@@ -1387,6 +1390,7 @@ button {
   .oak-amount-filters label:first-child select { width:100%; }
   .oak-amount-filters input { width:100%;min-width:0; }
   .oak-amount-filter-total { min-width:0; }
+  .oak-fuel-summary { grid-column:1/-1;justify-content:space-between;margin-left:0; }
   .oak-amount-table-scroll { max-height:60dvh; }
   .oak-amount-workspace .oak-inline-toolbar .oak-ledger-title { margin-right:auto; }
   .oak-amount-workspace > .pagination { flex-wrap:wrap; }

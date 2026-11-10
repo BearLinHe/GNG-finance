@@ -1,5 +1,7 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {allocateFuelAmount,buildFuelMileageContexts,fuelPeriodKey,summarizeFuelPeriods,summarizeFuelWorkMileage,type FuelMileageContext} from '../lib/oak-fuel';
+import {allocateFuelAmount,buildFuelMileageContexts,summarizeFuelLedger,summarizeFuelWorkMileage,sumRecordedVehicleMiles,type FuelMileageContext} from '../lib/oak-fuel';
+import {readRecordedVehicleMiles} from '../lib/oak-fuel-db';
+import type {PoolClient} from 'pg';
 import {calculateDatedVehicleAccounting,type VehicleAmount} from '../lib/oak-vehicle-amounts';
 import {oakVehicleSeeds} from '../lib/oak-vehicles';
 const month={dateFrom:'2026-08-01',dateTo:'2026-08-31'},week={dateFrom:'2026-08-01',dateTo:'2026-08-07'};
@@ -36,34 +38,28 @@ test('mileage checks gaps in the display interval independently of full-period f
  assert.deepEqual(summarizeFuelWorkMileage(month,week,partial),{...week,miles:858,pendingReason:undefined});
  assert.equal(allocateFuelAmount(source,week,partial).allocatedAmount,null);
 });
-test('fuel per mile combines same-vehicle same-period fees even when one row is hidden',()=>{
- const first={...source,vehicleId:vehicle.id},second={...first,amount:1300.01};
- const differentVehicle={...first,vehicleId:'other',amount:200};
- const differentPeriod={...first,dateFrom:week.dateTo,amount:350};
- const [metrics]=summarizeFuelPeriods([first],[first,second,differentVehicle,differentPeriod],undefined,{[vehicle.id]:mileage}).values();
- assert.deepEqual(metrics.fuelUnitCost,{rate:6417.88/6829,amount:6417.88,recordCount:2});
- assert.equal(metrics.workMileage?.miles,6829);
+test('fuel summary divides all matched fee amounts by independently recorded mileage once',()=>{
+ const fees=[{...source,amount:6754.66},{...source,amount:3580.49}];
+ assert.deepEqual(summarizeFuelLedger(fees,10723),{amount:10335.15,miles:10723,rate:10335.15/10723});
+ assert.deepEqual(summarizeFuelLedger(fees,0),{amount:10335.15,miles:0,rate:null});
+ assert.deepEqual(summarizeFuelLedger([],200),{amount:0,miles:200,rate:null});
+ assert.equal(summarizeFuelLedger([{amount:0}],10).rate,0);
 });
-test('filtered fuel per mile uses allocated cents and mileage from the same overlap',()=>{
- const first={...source,vehicleId:vehicle.id},second={...first,amount:1300.01};
- const expected=(Math.round(allocateFuelAmount(first,week,mileage).allocatedAmount!*100)+Math.round(allocateFuelAmount(second,week,mileage).allocatedAmount!*100))/100;
- const {workMileage,fuelUnitCost}=summarizeFuelPeriods([first,second],[first,second],week,{[vehicle.id]:mileage}).get(fuelPeriodKey(first))!;
- assert.equal(workMileage?.miles,858);
- assert.deepEqual(fuelUnitCost,{rate:expected/858,amount:expected,recordCount:2});
+test('recorded miles include vehicle aliases without counting other or unmapped work in a selected vehicle',()=>{
+ const rows=[{driverName:'877',miles:150.05},{driverName:'张晓澄',miles:707.95},{driverName:'905',miles:300},
+  {driverName:'Unlinked',miles:500},{driverName:'877',miles:NaN}];
+ assert.equal(sumRecordedVehicleMiles(oakVehicleSeeds,rows,vehicle.id),858);
+ assert.equal(sumRecordedVehicleMiles(oakVehicleSeeds,rows,''),1158);
 });
-test('fuel per mile is pending when mileage or allocated fuel is incomplete or no miles were driven',()=>{
- const first={...source,vehicleId:vehicle.id};
- const metrics=(range:typeof month|undefined,context:FuelMileageContext)=>summarizeFuelPeriods([first],[first],range,{[vehicle.id]:context}).get(fuelPeriodKey(first))!;
- const partial=metrics(undefined,{...mileage,coverage:[week]});
- assert.equal(partial.fuelUnitCost.rate,null);
- assert.match(partial.fuelUnitCost.pendingReason||'',/未覆盖完整/);
- const missingFee=metrics(week,{...mileage,coverage:[week]});
- assert.equal(missingFee.workMileage?.miles,858);
- assert.equal(missingFee.fuelUnitCost.rate,null);
- assert.equal(missingFee.fuelUnitCost.amount,null);
- const zero=metrics({...week,dateTo:'2026-08-02'},mileage);
- assert.equal(zero.workMileage?.miles,0);
- assert.equal(zero.fuelUnitCost.rate,null);
+test('summary mileage query uses only the work date filter, not fuel periods or payroll coverage',async()=>{
+ const client={async query(sql:string,args:unknown[]){
+  assert.match(sql,/sum\(miles\)/);
+  assert.match(sql,/work_date between \$1::date and \$2::date/);
+  assert.doesNotMatch(sql,/oak_vehicle_amounts|oak_driver_imports/);
+  assert.deepEqual(args,[week.dateFrom,week.dateTo]);
+  return {rows:[{driverName:vehicle.driverName,miles:858}]};
+ }} as unknown as PoolClient;
+ assert.equal(await readRecordedVehicleMiles(client,oakVehicleSeeds,vehicle.id,week),858);
 });
 test('missing coverage or missing task mileage never silently falls back to time proration',()=>{
  assert.equal(allocateFuelAmount(source,week).allocatedAmount,null);
