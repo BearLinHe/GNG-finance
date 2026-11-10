@@ -64,7 +64,7 @@ async function readAccounting(client: PoolClient, query: AccountingQuery, freshR
     return vehicleIds.get(name)!;
   };
   const subjects = subjectResult.rows.map(row => ({ ...row, vehicleId: vehicleIdFor(row.name) })) as VehicleAccountingResponse["subjects"];
-  const rated=await readRatedDriverTasks(client,{dateFrom:from,dateTo:to},ruleResult.rows);
+  const rated=await readRatedDriverTasks(client,{dateFrom:from,dateTo:to},vehicles,ruleResult.rows);
   const settlements = (await client.query(`select s.id::text,s.subject,s.week_start::text as "weekStart",s.week_end::text as "weekEnd",
     s.payee_type as "payeeType",s.base_amount::float8 as "baseAmount",s.adjustments,s.status,
     coalesce((select jsonb_agg(st.task_id::text order by st.task_id) from oak_settlement_tasks st where st.settlement_id=s.id),'[]') as "taskIds"

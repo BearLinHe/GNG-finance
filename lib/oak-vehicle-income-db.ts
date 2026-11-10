@@ -27,7 +27,7 @@ export async function listVehicleIncome(params:URLSearchParams):Promise<VehicleI
         select min(work_date) as date_from,max(work_date) as date_to from oak_driver_tasks
         union all select min(date_from),max(date_to) from oak_vehicle_amounts where category='income' and voided_at is null) a`)).rows[0];
       const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const scope=range||{dateFrom:bounds.dateFrom||today,dateTo:bounds.dateTo||today};
-      const tasks=await readRatedDriverTasks(client,scope),amounts=await readVehicleAmounts(client,scope);
+      const tasks=await readRatedDriverTasks(client,scope,vehicles),amounts=await readVehicleAmounts(client,scope);
       const sources=await readIncomeActivitySources(client,vehicles);
       let rows=buildVehicleIncomeRows(vehicles,tasks,amounts,scope,sources,dateOrder).filter(row=>!vehicleId||row.vehicleId===vehicleId);
       const search=(params.get('search')||'').trim().toLocaleLowerCase();

@@ -3,6 +3,8 @@ import { ensureSystemSchema, withSystemClient } from "./system-db";
 import { incomeAmount, incomeText, priceDriverDays, rulesOverlap, validateIncomeRule, type IncomeReview, type IncomeRule } from "./oak-income";
 import { summarizeDriverTasks, type DriverTask } from "./oak-driver-types";
 import type { PayeeType } from "./oak-payee";
+import { readOakVehicles } from "./oak-vehicles-db";
+import type { OakVehicle } from "./oak-vehicles";
 
 export class IncomeInputError extends Error {}
 export function incomeId(value: unknown) {
@@ -49,7 +51,7 @@ export async function readIncomeContext(client: PoolClient, ids: string[], revie
   const tasks = result.rows.map(taskFromRow);
   return { days: summarizeDriverTasks(tasks), reviews: await readIncomeReviews(client, tasks.map(task => task.id!)) };
 }
-export async function readRatedDriverTasks(client:PoolClient,range:{dateFrom:string;dateTo:string},rules?:IncomeRule[]):Promise<DriverTask[]>{
+export async function readRatedDriverTasks(client:PoolClient,range:{dateFrom:string;dateTo:string},vehicles:OakVehicle[],rules?:IncomeRule[]):Promise<DriverTask[]>{
   const tasks=(await client.query(`select t.id::text,t.import_id::int as "importId",t.driver_name as "driverName",t.sheet_name as "sheetName",
     t.work_date::text as "workDate",t.payee_type as "payeeType",t.section,t.source_row as "sourceRow",t.reference,t.nature,
     t.from_location as "fromLocation",t.to_location as "toLocation",t.miles::float8,t.notes,t.raw_cells as "rawCells",i.file_name as "fileName"
@@ -57,7 +59,7 @@ export async function readRatedDriverTasks(client:PoolClient,range:{dateFrom:str
   const reviews=await readIncomeReviews(client,tasks.map(task=>task.id!));
   const context=await readIncomeContext(client,tasks.map(task=>task.id!),reviews);
   const days=summarizeDriverTasks(tasks);
-  return priceDriverDays([...days,...context.days],rules||await readIncomeRules(client),[...reviews,...context.reviews]).slice(0,days.length).flatMap(day=>day.tasks);
+  return priceDriverDays([...days,...context.days],rules||await readIncomeRules(client),[...reviews,...context.reviews],vehicles).slice(0,days.length).flatMap(day=>day.tasks);
 }
 export async function incomeTaskScope(taskId: string) {
   await ensureSystemSchema();
@@ -134,7 +136,7 @@ export async function saveIncomeReview(taskId: string, value: unknown) {
         const dayResult = await client.query("select *, work_date::text as date_text from oak_driver_tasks where driver_name=$1 and work_date=$2::date", [anchor.driver_name, anchor.date_text]);
         const dayTasks = dayResult.rows.map(taskFromRow);
         const rules = await readIncomeRules(client); const reviews = await readIncomeReviews(client, dayTasks.map(row => row.id!));
-        const income = priceDriverDays([{ driverName: anchor.driver_name, workDate: anchor.date_text, taskCount: dayTasks.length, miles: null, tasks: dayTasks }], rules, reviews)[0].tasks.find(row => row.id === String(anchor.id))!.income!;
+        const income = priceDriverDays(summarizeDriverTasks(dayTasks), rules, reviews, await readOakVehicles(client))[0].tasks.find(row => row.id === String(anchor.id))!.income!;
         if (income.status !== "priced" || (income.source === "rule" && income.billingBasis !== "trip")) throw new IncomeInputError("主作业需已有整趟收入或人工核定收入，请先核对主作业");
       }
       await client.query(`insert into oak_task_income_reviews(task_id,mode,work_label,amount,included_task_id,note)

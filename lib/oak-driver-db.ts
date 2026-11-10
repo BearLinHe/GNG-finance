@@ -7,6 +7,7 @@ import { summarizePayeeTypes } from "./oak-payee";
 import { pricePeriodProfits } from "./oak-period-profit-db";
 import { summarizePeriodProfits } from "./oak-period-profit";
 import { paginateDriverPeriods } from "./oak-pagination";
+import { readOakVehicles } from "./oak-vehicles-db";
 
 export async function saveDriverWorkbook(fileName: string, fileHash: string, tasks: DriverTask[], batchPeriod?: DriverBatchPeriod) {
   if (!tasks.length) throw new Error("请至少选择一个有作业记录的工作表");
@@ -107,7 +108,7 @@ export async function listDriverActivities(params: {
     const context = await readIncomeContext(client, periodDays.flatMap((day: { tasks: DriverTask[] }) => day.tasks.map(task => task.id!)), reviews);
     // Price complete driver-days before text search so an included return keeps its main-job context.
     const search = params.search.trim().toLocaleLowerCase();
-    const ratedDays = priceDriverDays([...periodDays, ...context.days], rules, [...reviews, ...context.reviews]).slice(0, periodDays.length).map(day => {
+    const ratedDays = priceDriverDays([...periodDays, ...context.days], rules, [...reviews, ...context.reviews], await readOakVehicles(client)).slice(0, periodDays.length).map(day => {
       const tasks = search ? day.tasks.filter(task => [task.reference, task.nature, task.fromLocation, task.toLocation, task.notes, task.income?.workLabel].filter(Boolean).join(" ").toLocaleLowerCase().includes(search)) : day.tasks;
       const mileValues = tasks.map(task => task.miles).filter((miles): miles is number => miles != null);
       return { ...day, tasks, taskCount: tasks.length, miles: mileValues.length ? Math.round(mileValues.reduce((sum, miles) => sum + miles, 0) * 100) / 100 : null, revenue: summarizeIncome(tasks) };

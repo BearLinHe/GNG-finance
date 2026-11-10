@@ -1,4 +1,5 @@
 import type { DriverDay, DriverTask } from "./oak-driver-types";
+import { vehicleForSubject, type OakVehicle } from "./oak-vehicles";
 
 export type IncomeRule = {
   id: number; name: string; workLabel: string; fromLocation: string | null; toLocation: string | null;
@@ -76,7 +77,68 @@ export function summarizeIncome(tasks: DriverTask[]): IncomeSummary {
   return { ...summary, amount: cents / 100 };
 }
 
-export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews: IncomeReview[]): DriverDay[] {
+type RatedTask = DriverTask & { income: TaskIncome };
+
+function priceR001Trips(tasks: RatedTask[], rules: IncomeRule[], vehicles: OakVehicle[]) {
+  if (!vehicles.some(vehicle => vehicle.vehicleNumber === "0527")) return;
+  const standards = rules.filter(rule => rule.active && rule.billingBasis === "trip" && !rule.fromLocation && !rule.toLocation
+    && normalizeIncomeWork(rule.workLabel) === "R001");
+  if (!standards.length) return;
+
+  const sourcesByDay = new Map<string, Map<string, RatedTask[]>>();
+  const subjects = new Map<string, boolean>();
+  for (const task of tasks) {
+    if (!task.id || task.importId == null || normalizeIncomeText(task.reference) !== "R001") continue;
+    if (!subjects.has(task.driverName)) subjects.set(task.driverName, vehicleForSubject(vehicles, task.driverName)?.vehicleNumber === "0527");
+    if (!subjects.get(task.driverName)) continue;
+    const sources = sourcesByDay.get(task.workDate) || new Map<string, RatedTask[]>();
+    const key = JSON.stringify([task.importId, task.sheetName, task.section, task.driverName]);
+    const legs = sources.get(key) || [];
+    legs.push(task);
+    sources.set(key, legs);
+    sourcesByDay.set(task.workDate, sources);
+  }
+  for (const [date, sources] of sourcesByDay) {
+    // Separate workbooks may be copies of the same day's trips; don't price them twice.
+    if (sources.size !== 1) continue;
+    const applicable = standards.filter(rule => (!rule.validFrom || date >= rule.validFrom) && (!rule.validTo || date <= rule.validTo));
+    if (applicable.length !== 1) continue;
+    const rule = applicable[0];
+    const [legs] = sources.values();
+    let trip: RatedTask[] = [];
+    for (const leg of legs.sort((a, b) => a.sourceRow - b.sourceRow)) {
+      const from = normalizeIncomeText(leg.fromLocation), to = normalizeIncomeText(leg.toLocation);
+      const previous = trip.at(-1);
+      if (previous && (leg.sourceRow !== previous.sourceRow + 1 || from !== normalizeIncomeText(previous.toLocation))) trip = [];
+      if (!from || !to || from === to) { trip = []; continue; }
+      if (!trip.length && from !== "94587" && from !== "SFO") continue;
+      trip.push(leg);
+      if (to !== "94587") continue;
+      if (trip.length > 1) priceR001Trip(trip, rule);
+      trip = [];
+    }
+  }
+}
+
+function priceR001Trip([anchor, ...legs]: RatedTask[], rule: IncomeRule) {
+  const income = anchor.income;
+  const canAnchor = income.review
+    ? income.status === "priced" && (income.source === "manual" || income.ruleId === rule.id)
+    : !income.workLabel;
+  if (!canAnchor || legs.some(({ income }) => income.review
+    ? income.review.mode !== "included" || income.review.includedTaskId !== anchor.id
+    : Boolean(income.workLabel))) return;
+  if (!income.review) Object.assign(income, {
+    status: "priced", workLabel: "R001", amount: rule.amount, source: "rule", ruleId: rule.id, billingBasis: "trip",
+    basis: `${rule.name} · $${rule.amount.toFixed(2)} / 趟（${legs.length + 1} 段，回到 94587）`,
+  } satisfies Partial<TaskIncome>);
+  for (const leg of legs) if (!leg.income.review) Object.assign(leg.income, {
+    status: "included", workLabel: "R001", amount: 0, source: "included", includedTaskId: anchor.id!,
+    basis: `已含在 ${anchor.workDate} R001 整趟收入中 · 原表第 ${anchor.sourceRow} 行`,
+  } satisfies Partial<TaskIncome>);
+}
+
+export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews: IncomeReview[], vehicles: OakVehicle[] = []): DriverDay[] {
   const byReview = new Map(reviews.map(review => [review.taskId, review]));
   const tasks = days.flatMap(day => day.tasks).map(task => {
     const review = task.id ? byReview.get(task.id) || null : null;
@@ -122,6 +184,7 @@ export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews:
       income.basis = `${rule.name} · 同日多段匹配整趟标准，需核定主作业及回程归属`;
     }
   }
+  priceR001Trips(tasks, rules, vehicles);
   for (const task of tasks) {
     if (task.income.review?.mode !== "included") continue;
     const anchor = byId.get(task.income.includedTaskId || "");
