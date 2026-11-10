@@ -6,6 +6,7 @@ import { payeeIdentity } from './oak-payee';
 import { vehicleForSubject, type OakVehicle } from './oak-vehicles';
 import {payrollWarningLabels,type PayrollCandidate,type PayrollCell,type PayrollPreview,type PayrollSheet} from './oak-payroll';
 import { restoreWorkbookCachedZeros } from './oak-workbook-cache';
+import { workbookDataSheets } from './oak-workbook-bounds';
 
 const header = (value: string) => value.toLowerCase().replace(/[\s_]/g, '');
 const cents = (cell: ExcelJS.Cell): number | null => {
@@ -14,15 +15,15 @@ const cents = (cell: ExcelJS.Cell): number | null => {
   return Number.isFinite(number) && number >= 0 && number <= 9999999999.99 ? Math.round(number * 100) : null;
 };
 const evidence = (cell: ExcelJS.Cell): PayrollCell => ({ address: cell.address, value: typeof cellValue(cell) === 'number' ? cellValue(cell) as number : text(cell) || cell.text || null });
-type Section = { name: string; start: number; end: number; totalRow: number; columns: Record<string, number>; headerRow: number };
+type Section = { name: string; start: number; end: number; totalRow: number; columns: Record<string, number>; headerRow: number; ratePayroll: boolean };
 
-function sections(sheet: ExcelJS.Worksheet): Section[] {
-  for (let row = 1; row <= Math.min(sheet.rowCount, 20); row++) {
+function sections({ sheet, rowCount, columnCount }: ReturnType<typeof workbookDataSheets>[number]): Section[] {
+  for (let row = 1; row <= Math.min(rowCount, 20); row++) {
     const dates: number[] = [];
-    for (let col = 1; col <= sheet.columnCount; col++) if (/^(date|日期|作业日期)$/.test(header(text(sheet.getCell(row, col))))) dates.push(col);
+    for (let col = 1; col <= columnCount; col++) if (/^(date|日期|作业日期)$/.test(header(text(sheet.getCell(row, col))))) dates.push(col);
     const result: Section[] = [];
     for (let index = 0; index < dates.length; index++) {
-      const start = dates[index], end = (dates[index + 1] || sheet.columnCount + 1) - 1, columns: Record<string, number> = {};
+      const start = dates[index], end = (dates[index + 1] || columnCount + 1) - 1, columns: Record<string, number> = {};
       for (let col = start + 1; col <= end; col++) {
         const label = header(text(sheet.getCell(row, col)));
         if (/^(driver|司机|司机工资)$/.test(label)) columns.driver = col;
@@ -32,22 +33,35 @@ function sections(sheet: ExcelJS.Worksheet): Section[] {
         if (/^(to|终点|目的地)$/.test(label)) columns.to = col;
         if (/^(nature|性质|作业|作业内容)$/.test(label)) columns.nature = col;
         if (/^(柜号|container|reference)$/.test(label)) columns.reference = col;
+        if (/^(miles|里程)$/.test(label) && !columns.miles) columns.miles = col;
+        if (label === 'rate' && !columns.rate) columns.rate = col;
       }
-      if (!columns.from || !columns.to || !columns.nature || (!columns.driver && !columns.amount)) continue;
+      if (!columns.from || !columns.to || !columns.nature) continue;
       let totalRow = 0;
-      for (let r = row + 1; r <= sheet.rowCount; r++) if (/^(total|合计|总计)$/i.test(text(sheet.getCell(r, start)))) { totalRow = r; break; }
-      result.push({ name: columns.reference ? '海柜' : 'Local', start, end, totalRow, columns, headerRow: row });
+      for (let r = row + 1; r <= rowCount; r++) if (/^(total|合计|总计)$/i.test(text(sheet.getCell(r, start)))) { totalRow = r; break; }
+      let ratePayroll = false;
+      if (!columns.driver && !columns.amount) {
+        // A Rate column is payroll only in the CA layout with an explicit sum of its detail rows.
+        if (columns.reference || columns.from !== start + 1 || columns.to !== start + 2 || columns.nature !== start + 3
+          || columns.miles !== start + 4 || columns.rate !== start + 5 || totalRow <= row + 1) continue;
+        const total = sheet.getCell(totalRow, columns.rate), col = total.address.replace(/\d+$/, '');
+        const formula = total.formula?.replace(/[\s$]/g, '').replace(/^=/, '').toUpperCase();
+        if (formula !== `SUM(${col}${row + 1}:${col}${totalRow - 1})`) continue;
+        columns.driver = columns.rate;
+        ratePayroll = true;
+      }
+      result.push({ name: columns.reference ? '海柜' : 'Local', start, end, totalRow, columns, headerRow: row, ratePayroll });
     }
     if (result.length) return result;
   }
   return [];
 }
 
-function sectionTotal(sheet: ExcelJS.Worksheet, section: Section, kind: 'driver' | 'amount', warnings: Set<string>) {
+function sectionTotal(sheet: ExcelJS.Worksheet, rowCount: number, section: Section, kind: 'driver' | 'amount', warnings: Set<string>) {
   const col = section.columns[kind] || (!section.columns.driver && kind === 'driver' ? section.columns.amount : 0);
   if (!col) return null;
   const rows: PayrollCell[] = []; let sum = 0, populated = false, invalid = false;
-  for (let r = section.headerRow + 1; r < (section.totalRow || sheet.rowCount + 1); r++) {
+  for (let r = section.headerRow + 1; r < (section.totalRow || rowCount + 1); r++) {
     const cell = sheet.getCell(r, col);
     if (cell.isMerged && cell.master.address !== cell.address) continue;
     const raw = cell.value;
@@ -60,14 +74,15 @@ function sectionTotal(sheet: ExcelJS.Worksheet, section: Section, kind: 'driver'
   if (totalCell && totalCell.value != null && total == null) warnings.add(`${section.name} ${totalCell.address} 合计无有效数值`);
   if (invalid) warnings.add(`${section.name} ${kind === 'driver' ? 'Driver' : 'Amount'} 明细含无效金额`);
   if (total != null && populated && !invalid && total !== sum) warnings.add(`${section.name} 合计与明细相差 $${(Math.abs(total - sum) / 100).toFixed(2)}`);
-  return { amount: total != null ? total : populated && !invalid ? sum : null, cells: totalCell ? [evidence(totalCell), ...rows] : rows };
+  return { amount: total != null ? total : !section.ratePayroll && populated && !invalid ? sum : null, cells: totalCell ? [evidence(totalCell), ...rows] : rows };
 }
 
-function combinedCandidate(sheet: ExcelJS.Worksheet, blocks: Section[], kind: 'driver' | 'amount', warnings: Set<string>): PayrollCandidate | null {
-  const parts = blocks.map(block => sectionTotal(sheet, block, kind, warnings));
+function combinedCandidate(sheet: ExcelJS.Worksheet, rowCount: number, blocks: Section[], kind: 'driver' | 'amount', warnings: Set<string>): PayrollCandidate | null {
+  const parts = blocks.map(block => sectionTotal(sheet, rowCount, block, kind, warnings));
   if (parts.every(part => !part)) return null;
   const amount = parts.every(part => part?.amount != null) ? parts.reduce((sum, part) => sum + part!.amount!, 0) / 100 : null;
-  return { id: kind, label: `${blocks.map(block => block.name).join(' + ')}合计（${kind === 'driver' ? 'Driver' : 'Amount'}）`, amount, cells: parts.flatMap(part => part?.cells || []) };
+  const columnLabel = kind === 'amount' ? 'Amount' : blocks.every(block => block.ratePayroll) ? 'Rate' : 'Driver';
+  return { id: kind, label: `${blocks.map(block => block.name).join(' + ')}合计（${columnLabel}）`, amount, cells: parts.flatMap(part => part?.cells || []) };
 }
 
 export async function parsePayrollWorkbook(buffer: Buffer, fileName: string, vehicles: OakVehicle[]): Promise<PayrollPreview> {
@@ -76,14 +91,14 @@ export async function parsePayrollWorkbook(buffer: Buffer, fileName: string, veh
   const workbook = new ExcelJS.Workbook();
   try { await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer, { ignoreNodes: ['drawing', 'picture', 'extLst'] }); }
   catch { throw new Error('无法读取 Excel，请确认文件未损坏、未加密'); }
-  if (workbook.worksheets.length > 100 || workbook.worksheets.some(sheet => sheet.rowCount > 10000 || sheet.columnCount > 100)) throw new Error('表格超出支持范围：最多 100 张表，每表 10000 行、100 列');
+  const dataSheets = workbookDataSheets(workbook);
+  const blocksBySheet = dataSheets.map(data => /模板|template|油税/i.test(data.sheet.name) ? [] : sections(data));
   await restoreWorkbookCachedZeros(workbook, buffer);
   const sheets: PayrollSheet[] = [], skippedSheets: string[] = []; let firstDate = '';
-  for (const sheet of workbook.worksheets) {
-    if (/模板|template|油税/i.test(sheet.name)) { skippedSheets.push(sheet.name); continue; }
-    const blocks = sections(sheet);
+  for (const [index, { sheet, rowCount }] of dataSheets.entries()) {
+    const blocks = blocksBySheet[index];
     if (!blocks.length) { skippedSheets.push(sheet.name); continue; }
-    for (const block of blocks) for (let r = block.headerRow + 1; r < (block.totalRow || sheet.rowCount + 1); r++) {
+    for (const block of blocks) for (let r = block.headerRow + 1; r < (block.totalRow || rowCount + 1); r++) {
       const date = dateValue(sheet.getCell(r, block.start), null);
       if (date && (!firstDate || date < firstDate)) firstDate = date;
     }
@@ -91,11 +106,11 @@ export async function parsePayrollWorkbook(buffer: Buffer, fileName: string, veh
     const vehicle = vehicleForSubject(vehicles, sheet.name), role = payeeIdentity(sheet.name).type;
     if (!vehicle) warnings.add(payrollWarningLabels.vehicle);
     if (!role) warnings.add(payrollWarningLabels.payeeType);
-    const driver = combinedCandidate(sheet, blocks, 'driver', warnings), amount = combinedCandidate(sheet, blocks, 'amount', new Set());
+    const driver = combinedCandidate(sheet, rowCount, blocks, 'driver', warnings), amount = combinedCandidate(sheet, rowCount, blocks, 'amount', new Set());
     if (driver) candidates.push(driver);
     if (amount) candidates.push(amount);
     const main = blocks[0];
-    for (let row = (main.totalRow || main.headerRow) + 1; row <= Math.min(sheet.rowCount, (main.totalRow || main.headerRow) + 30); row++) {
+    for (let row = (main.totalRow || main.headerRow) + 1; row <= Math.min(rowCount, (main.totalRow || main.headerRow) + 30); row++) {
       for (let col = main.start; col < Math.min(main.end, main.columns.driver || main.columns.amount); col++) {
         const cell = sheet.getCell(row, col), label = text(cell).replace(/\s/g, '');
         if (cell.isMerged && cell.master.address !== cell.address) continue;
@@ -113,7 +128,7 @@ export async function parsePayrollWorkbook(buffer: Buffer, fileName: string, veh
     sheets.push({ sheetName: sheet.name, vehicleId: vehicle?.id || null, payeeType: role, candidateId: chosen?.id || 'manual', amount: chosen?.amount ?? null,
       selected: Boolean(vehicle && role && chosen?.amount != null && !warnings.size), candidates, warnings: [...warnings] });
   }
-  if (!sheets.length) throw new Error('没有找到包含 Driver 或 Amount 金额的工资工作表');
+  if (!sheets.length) throw new Error('没有找到可识别的工资表：需要 Driver、Amount，或带合计公式的加州 Rate 列');
   if (!firstDate) throw new Error('无法确认工资周期年份，请在工作表中填写完整作业日期');
   const period = resolveDriverBatchPeriod(fileName, firstDate);
   for (const sheet of sheets) if (sheet.vehicleId && sheets.filter(other => other.vehicleId === sheet.vehicleId).length > 1) {

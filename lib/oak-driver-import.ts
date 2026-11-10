@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import type { DriverTask, DriverWorkbookPreview } from "./oak-driver-types";
 import { resolveDriverBatchPeriod } from "./oak-driver-batch";
 import { payeeIdentity } from "./oak-payee";
+import { workbookDataSheets } from "./oak-workbook-bounds";
 
 export const MAX_DRIVER_WORKBOOK_BYTES = 4 * 1024 * 1024;
 
@@ -52,13 +53,10 @@ export async function parseDriverWorkbook(buffer: Buffer, fileName: string): Pro
   } catch {
     throw new Error("无法读取 Excel，请确认文件未损坏、未加密，并使用 .xlsx 格式");
   }
-  if (workbook.worksheets.length > 100) throw new Error("工作表过多，请将文件拆分为不超过 100 个工作表");
-  if (workbook.worksheets.some(sheet => sheet.rowCount > 10000 || sheet.columnCount > 100)) {
-    throw new Error("表格超出支持范围：每表最多 10000 行、100 列");
-  }
+  const sheets = workbookDataSheets(workbook);
   let year: number | null = null;
-  for (const sheet of workbook.worksheets) {
-    for (let r = 1; r <= Math.min(sheet.rowCount, 100); r++) {
+  for (const { sheet, rowCount } of sheets) {
+    for (let r = 1; r <= Math.min(rowCount, 100); r++) {
       const value = cellValue(sheet.getCell(r, 1));
       if (value instanceof Date && Number.isFinite(value.getTime())) { year = value.getUTCFullYear(); break; }
     }
@@ -67,7 +65,7 @@ export async function parseDriverWorkbook(buffer: Buffer, fileName: string): Pro
   const preview: Omit<DriverWorkbookPreview, "batchPeriod"> = {
     fileName, fileHash: createHash("sha256").update(buffer).digest("hex"), sheets: [], tasks: [], skippedSheets: [], warnings: []
   };
-  for (const sheet of workbook.worksheets) {
+  for (const { sheet, rowCount, columnCount } of sheets) {
     if (/模板|template|油税/i.test(sheet.name)) {
       preview.skippedSheets.push({ sheetName: sheet.name, reason: "模板或油税表，不作为司机作业导入" });
       continue;
@@ -75,14 +73,14 @@ export async function parseDriverWorkbook(buffer: Buffer, fileName: string): Pro
     const sheetTasks: DriverTask[] = [];
     const warnings = new Set<string>();
     let recognized = false;
-    for (let headerRow = 1; headerRow <= Math.min(sheet.rowCount, 20); headerRow++) {
+    for (let headerRow = 1; headerRow <= Math.min(rowCount, 20); headerRow++) {
       const dateColumns: number[] = [];
-      for (let c = 1; c <= sheet.columnCount; c++) {
+      for (let c = 1; c <= columnCount; c++) {
         if (/^(date|日期|作业日期)$/.test(normalizedHeader(text(sheet.getCell(headerRow, c))))) dateColumns.push(c);
       }
       for (let block = 0; block < dateColumns.length; block++) {
         const start = dateColumns[block];
-        let end = (dateColumns[block + 1] || sheet.columnCount + 1) - 1;
+        let end = (dateColumns[block + 1] || columnCount + 1) - 1;
         const columns: Record<string, number> = {};
         for (let c = start; c <= end; c++) {
           const label = normalizedHeader(text(sheet.getCell(headerRow, c)));
@@ -100,7 +98,7 @@ export async function parseDriverWorkbook(buffer: Buffer, fileName: string): Pro
         recognized = true;
         const section = columns.reference ? "海柜" : "Local";
         let currentDate: string | null = null;
-        for (let r = headerRow + 1; r <= sheet.rowCount; r++) {
+        for (let r = headerRow + 1; r <= rowCount; r++) {
           const dateCell = sheet.getCell(r, start);
           const dateText = text(dateCell);
           if (/^(total|合计|总计)$/i.test(dateText)) break;

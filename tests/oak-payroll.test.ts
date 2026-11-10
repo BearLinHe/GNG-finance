@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import ExcelJS from 'exceljs';
 import { parsePayrollWorkbook, payrollRequestKey } from '../lib/oak-payroll-import';
+import { parseDriverWorkbook } from '../lib/oak-driver-import';
 import { validatePayrollSelection } from '../lib/oak-payroll';
 import { oakVehicleSeeds } from '../lib/oak-vehicles';
 import { allocateVehicleAmount, calculateDatedVehicleAccounting, type VehicleAmount } from '../lib/oak-vehicle-amounts';
@@ -65,6 +66,47 @@ test('the confirmed Xue name variant automatically links new payroll to 3183 wit
 test('date outliers never expand the filename payroll period and templates are ignored',async()=>{
   const workbook=new ExcelJS.Workbook();addSheet(workbook).getCell('A3').value=new Date('2026-10-11');addSheet(workbook,'模板');
   const preview=await parse(workbook);assert.equal(preview.dateTo,'2026-10-09');assert.deepEqual(preview.skippedSheets,['模板']);
+});
+function addCaliforniaRateSheet(workbook: ExcelJS.Workbook) {
+  const sheet=workbook.addWorksheet('翁浩德');
+  sheet.addRow(['CA payroll']);
+  sheet.addRow(['Date','From','To','Nature','Miles','Rate',null,'CA','NV',null,'MILES','Gallon']);
+  sheet.addRow([new Date('2026-08-03'),'SFO','95357','DEL',81,80]);
+  sheet.addRow([null,'95357','SFO','EMPTY',96,120]);
+  sheet.addRow(['Total',null,null,null,null,{formula:'SUM(F3:F4)',result:200}]);
+  return sheet;
+}
+test('CA Rate total is recognized and empty oversized formatting does not block payroll or work preview',async()=>{
+  const workbook=new ExcelJS.Workbook(),sheet=addCaliforniaRateSheet(workbook);
+  const zipcode=workbook.addWorksheet('Zipcode');
+  zipcode.getCell('A11').value='94587';
+  zipcode.getCell('A13486').font={bold:true};
+  sheet.getCell('CW90').numFmt='0.00';
+  const buffer=await bytes(workbook),fileName='加州-8_1-8_7.xlsx';
+  const payroll=await parsePayrollWorkbook(buffer,fileName,oakVehicleSeeds);
+  assert.deepEqual([payroll.dateFrom,payroll.dateTo],['2026-08-01','2026-08-07']);
+  assert.deepEqual(payroll.skippedSheets,['Zipcode']);
+  assert.equal(payroll.sheets[0].amount,200);
+  assert.equal(payroll.sheets[0].selected,true);
+  assert.equal(payroll.sheets[0].candidates[0].label,'Local合计（Rate）');
+  const work=await parseDriverWorkbook(buffer,fileName);
+  assert.deepEqual(work.tasks.map(task=>[task.sourceRow,task.workDate,task.miles]),[[3,'2026-08-03',81],[4,'2026-08-03',96]]);
+});
+test('CA Rate does not infer pay without a matching total formula and a cached total',async()=>{
+  const workbook=new ExcelJS.Workbook(),sheet=addCaliforniaRateSheet(workbook);
+  sheet.getCell('F5').value={formula:'AVERAGE(F3:F4)',result:100};
+  await assert.rejects(parse(workbook),/没有找到可识别的工资表/);
+  sheet.getCell('F5').value={formula:'SUM(F3:F4)'};
+  assert.equal((await parse(workbook)).sheets[0].amount,null);
+  sheet.getCell('F3').value=0;sheet.getCell('F4').value=0;sheet.getCell('F5').value={formula:'SUM(F3:F4)',result:0};
+  assert.equal((await parse(workbook)).sheets[0].amount,0);
+});
+test('real worksheet content outside the limits still names the affected sheet and cell',async()=>{
+  const workbook=new ExcelJS.Workbook();addCaliforniaRateSheet(workbook);
+  workbook.addWorksheet('Other').getCell('CW2').value={formula:'0',result:0};
+  const buffer=await bytes(workbook);
+  await assert.rejects(parsePayrollWorkbook(buffer,'8_1-8_7.xlsx',oakVehicleSeeds),/表格超出支持范围.*Other.*CW2/);
+  await assert.rejects(parseDriverWorkbook(buffer,'8_1-8_7.xlsx'),/表格超出支持范围.*Other.*CW2/);
 });
 test('payroll confirmation rejects invalid vehicles, duplicate vehicle rows, negative and blank amounts, and unreasoned adjustments',async()=>{
   const workbook=new ExcelJS.Workbook();addSheet(workbook);addSheet(workbook,'Jay D');const preview=await parse(workbook);
