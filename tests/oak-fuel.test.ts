@@ -1,5 +1,5 @@
 import {test} from 'node:test';import assert from 'node:assert/strict';
-import {allocateFuelAmount,buildFuelMileageContexts,summarizeFuelWorkMileage,type FuelMileageContext} from '../lib/oak-fuel';
+import {allocateFuelAmount,buildFuelMileageContexts,fuelPeriodKey,summarizeFuelPeriods,summarizeFuelWorkMileage,type FuelMileageContext} from '../lib/oak-fuel';
 import {calculateDatedVehicleAccounting,type VehicleAmount} from '../lib/oak-vehicle-amounts';
 import {oakVehicleSeeds} from '../lib/oak-vehicles';
 const month={dateFrom:'2026-08-01',dateTo:'2026-08-31'},week={dateFrom:'2026-08-01',dateTo:'2026-08-07'};
@@ -35,6 +35,35 @@ test('mileage checks gaps in the display interval independently of full-period f
  assert.equal(summarizeFuelWorkMileage(month,null,partial)?.pendingReason,gap.reason);
  assert.deepEqual(summarizeFuelWorkMileage(month,week,partial),{...week,miles:858,pendingReason:undefined});
  assert.equal(allocateFuelAmount(source,week,partial).allocatedAmount,null);
+});
+test('fuel per mile combines same-vehicle same-period fees even when one row is hidden',()=>{
+ const first={...source,vehicleId:vehicle.id},second={...first,amount:1300.01};
+ const differentVehicle={...first,vehicleId:'other',amount:200};
+ const differentPeriod={...first,dateFrom:week.dateTo,amount:350};
+ const [metrics]=summarizeFuelPeriods([first],[first,second,differentVehicle,differentPeriod],undefined,{[vehicle.id]:mileage}).values();
+ assert.deepEqual(metrics.fuelUnitCost,{rate:6417.88/6829,amount:6417.88,recordCount:2});
+ assert.equal(metrics.workMileage?.miles,6829);
+});
+test('filtered fuel per mile uses allocated cents and mileage from the same overlap',()=>{
+ const first={...source,vehicleId:vehicle.id},second={...first,amount:1300.01};
+ const expected=(Math.round(allocateFuelAmount(first,week,mileage).allocatedAmount!*100)+Math.round(allocateFuelAmount(second,week,mileage).allocatedAmount!*100))/100;
+ const {workMileage,fuelUnitCost}=summarizeFuelPeriods([first,second],[first,second],week,{[vehicle.id]:mileage}).get(fuelPeriodKey(first))!;
+ assert.equal(workMileage?.miles,858);
+ assert.deepEqual(fuelUnitCost,{rate:expected/858,amount:expected,recordCount:2});
+});
+test('fuel per mile is pending when mileage or allocated fuel is incomplete or no miles were driven',()=>{
+ const first={...source,vehicleId:vehicle.id};
+ const metrics=(range:typeof month|undefined,context:FuelMileageContext)=>summarizeFuelPeriods([first],[first],range,{[vehicle.id]:context}).get(fuelPeriodKey(first))!;
+ const partial=metrics(undefined,{...mileage,coverage:[week]});
+ assert.equal(partial.fuelUnitCost.rate,null);
+ assert.match(partial.fuelUnitCost.pendingReason||'',/未覆盖完整/);
+ const missingFee=metrics(week,{...mileage,coverage:[week]});
+ assert.equal(missingFee.workMileage?.miles,858);
+ assert.equal(missingFee.fuelUnitCost.rate,null);
+ assert.equal(missingFee.fuelUnitCost.amount,null);
+ const zero=metrics({...week,dateTo:'2026-08-02'},mileage);
+ assert.equal(zero.workMileage?.miles,0);
+ assert.equal(zero.fuelUnitCost.rate,null);
 });
 test('missing coverage or missing task mileage never silently falls back to time proration',()=>{
  assert.equal(allocateFuelAmount(source,week).allocatedAmount,null);

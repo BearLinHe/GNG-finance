@@ -4,7 +4,7 @@ import { forwardRef,useCallback,useEffect,useImperativeHandle,useMemo,useRef,use
 import { flexRender,getCoreRowModel,useReactTable,type ColumnDef,type ColumnSizingState } from "@tanstack/react-table";
 import { Download,FileText,GripVertical,Plus,Save,Search,Trash2,X } from "lucide-react";
 import { incomeMoney,json } from "./oak-income-controls";
-import { allocateVehicleAmount,amountCategoryLabels,validateVehicleAmount,type VehicleAmountCategory,type VehicleAmountsResponse,type VehicleAmount } from "@/lib/oak-vehicle-amounts";
+import { allocateVehicleAmount,amountCategoryLabels,validateVehicleAmount,type VehicleAmountCategory,type VehicleAmountsResponse } from "@/lib/oak-vehicle-amounts";
 import type { VehicleRange } from "@/lib/oak-vehicle-accounting";
 import type { OakVehicle } from "@/lib/oak-vehicles";
 import {tableDrag,useTableOrder} from "./oak-table-layout";
@@ -12,25 +12,42 @@ import OakRepairDetails from './oak-repair-details';
 import type {RepairDetails} from '@/lib/oak-repair';
 import OakPayrollUpload,{PayrollSourceDetails} from './oak-payroll-upload';
 import type {PayrollSource} from '@/lib/oak-payroll';
-import {allocateFuelAmount,type FuelMileageContext,type FuelWorkMileage} from '@/lib/oak-fuel';
+import {allocateFuelAmount,fuelPeriodKey,type FuelMileageContext,type FuelUnitCost,type FuelWorkMileage} from '@/lib/oak-fuel';
 
 export type AmountSelection=VehicleRange&{vehicleId:string;payeeType?:"driver"|"owner"};
-type Form={key:string;id:string|null;vehicleId:string;dateFrom:string;dateTo:string;amount:string;note:string;payeeType:"driver"|"owner";version:number;requestKey:string;source?:'manual'|'repair';repair?:RepairDetails;payroll?:PayrollSource;workMileage?:FuelWorkMileage|null};
+type Form={key:string;id:string|null;vehicleId:string;dateFrom:string;dateTo:string;amount:string;note:string;payeeType:"driver"|"owner";version:number;requestKey:string;source?:'manual'|'repair';repair?:RepairDetails;payroll?:PayrollSource;workMileage?:FuelWorkMileage|null;fuelUnitCost?:FuelUnitCost};
 type Meta={forms:Record<string,Form>;vehicles:OakVehicle[];range:VehicleRange|null;category:VehicleAmountCategory;dirty:Record<string,boolean>;busy:Record<string,boolean>;errors:Record<string,string>;
   fuelMileage?:Record<string,FuelMileageContext>;
   update:(key:string,field:keyof Form,value:string)=>void;save:(key:string,force?:boolean)=>void;remove:(key:string)=>void;moveRow:(from:string,to:string)=>void;openRepair:(repair:RepairDetails)=>void;openPayroll:(source:PayrollSource)=>void};
-const toForm=(record:VehicleAmount&{workMileage?:FuelWorkMileage|null}):Form=>({key:`entry-${record.requestKey}`,id:record.id,vehicleId:record.vehicleId,dateFrom:record.dateFrom,dateTo:record.dateTo,amount:record.amount.toFixed(2),note:record.note,payeeType:record.payeeType||"driver",version:record.version,requestKey:record.requestKey,source:record.source,repair:record.repair,payroll:record.payroll,workMileage:record.workMileage});
+const toForm=(record:VehicleAmountsResponse['records'][number]):Form=>({key:`entry-${record.requestKey}`,id:record.id,vehicleId:record.vehicleId,dateFrom:record.dateFrom,dateTo:record.dateTo,amount:record.amount.toFixed(2),note:record.note,payeeType:record.payeeType||"driver",version:record.version,requestKey:record.requestKey,source:record.source,repair:record.repair,payroll:record.payroll,workMileage:record.workMileage,fuelUnitCost:record.fuelUnitCost});
 const mileageFormat=new Intl.NumberFormat('en-US',{maximumFractionDigits:2});
+const fuelRateFormat=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',minimumFractionDigits:3,maximumFractionDigits:3});
+function mileageInScope(record:Form,range:VehicleRange|null){
+  const dateFrom=range&&range.dateFrom>record.dateFrom?range.dateFrom:record.dateFrom;
+  const dateTo=range&&range.dateTo<record.dateTo?range.dateTo:record.dateTo;
+  const mileage=record.workMileage;
+  return mileage?.dateFrom===dateFrom&&mileage.dateTo===dateTo?mileage:null;
+}
 function WorkMileageCell({record,meta}:{record:Form;meta:Meta}){
-  const form=meta.forms[record.key]||record,mileage=record.workMileage;
-  if(!record.id||form.vehicleId!==record.vehicleId||form.dateFrom!==record.dateFrom||form.dateTo!==record.dateTo)
+  const form=meta.forms[record.key]||record,mileage=mileageInScope(record,meta.range);
+  if(!record.id||fuelPeriodKey(form)!==fuelPeriodKey(record))
     return <div className="oak-allocation-cell"><small>保存后统计</small></div>;
-  const dateFrom=meta.range&&meta.range.dateFrom>record.dateFrom?meta.range.dateFrom:record.dateFrom;
-  const dateTo=meta.range&&meta.range.dateTo<record.dateTo?meta.range.dateTo:record.dateTo;
-  if(!mileage||mileage.dateFrom!==dateFrom||mileage.dateTo!==dateTo)return <div className="oak-allocation-cell">—</div>;
-  return <div className="oak-allocation-cell" title={[`${dateFrom} 至 ${dateTo}`,mileage.pendingReason].filter(Boolean).join(' · ')}>
+  if(!mileage)return <div className="oak-allocation-cell">—</div>;
+  return <div className="oak-allocation-cell" title={[`${mileage.dateFrom} 至 ${mileage.dateTo}`,mileage.pendingReason].filter(Boolean).join(' · ')}>
     <strong className={mileage.miles==null?'pending':undefined}>{mileage.miles==null?'待核对':`${mileageFormat.format(mileage.miles)} mi`}</strong>
     {mileage.miles!=null&&mileage.pendingReason?<small>仅已记录里程</small>:null}
+  </div>;
+}
+function FuelUnitCostCell({record,meta}:{record:Form;meta:Meta}){
+  const form=meta.forms[record.key]||record,mileage=mileageInScope(record,meta.range),cost=record.fuelUnitCost;
+  if(!record.id||fuelPeriodKey(form)!==fuelPeriodKey(record)||form.amount!==record.amount)
+    return <div className="oak-allocation-cell"><small>保存后计算</small></div>;
+  if(!mileage||!cost)return <div className="oak-allocation-cell">—</div>;
+  const calculation=cost.amount!=null&&mileage.miles!=null?`${incomeMoney(cost.amount)} ÷ ${mileageFormat.format(mileage.miles)} mi`:null;
+  const title=[`${mileage.dateFrom} 至 ${mileage.dateTo}`,`已保存同车同周期 ${cost.recordCount} 笔`,calculation,cost.pendingReason].filter(Boolean).join(' · ');
+  return <div className="oak-allocation-cell" title={title}>
+    <strong className={cost.rate==null?'pending':undefined}>{cost.rate==null?'待核对':`${fuelRateFormat.format(cost.rate)}/mi`}</strong>
+    {cost.recordCount>1?<small>同周期 {cost.recordCount} 笔</small>:null}
   </div>;
 }
 function Field({record,field,meta}:{record:Form;field:"vehicleId"|"dateFrom"|"dateTo"|"amount"|"note"|"payeeType";meta:Meta}){
@@ -116,7 +133,10 @@ export default forwardRef<VehicleAmountsHandle,Props>(function OakVehicleAmounts
     {id:'dateTo',header:category==='income'?'收入结束日期':'费用结束日期',size:145,cell:context=><Field record={context.row.original} field="dateTo" meta={context.table.options.meta as Meta}/>},
     ...(category==='labor'?[{id:'payeeType',header:'报酬类型',size:120,cell:(context:any)=><Field record={context.row.original} field="payeeType" meta={context.table.options.meta as Meta}/>}]:[]),
     {id:'amount',header:category==='income'?'本笔收入 / USD':'本笔费用 / USD',size:140,cell:context=><Field record={context.row.original} field="amount" meta={context.table.options.meta as Meta}/>},
-    ...(category==='fuel'?[{id:'workMileage',header:'工单 mile 数',size:130,cell:context=><WorkMileageCell record={context.row.original} meta={context.table.options.meta as Meta}/>} satisfies ColumnDef<Form>]:[]),
+    ...(category==='fuel'?[
+      {id:'workMileage',header:'工单 mile 数',size:130,cell:context=><WorkMileageCell record={context.row.original} meta={context.table.options.meta as Meta}/>},
+      {id:'fuelUnitCost',header:'油费 / mi',size:120,cell:context=><FuelUnitCostCell record={context.row.original} meta={context.table.options.meta as Meta}/>},
+    ] satisfies ColumnDef<Form>[]:[]),
     ...(category==='maintenance'?[]:[{id:'allocation',header:'计入核算金额',size:155,cell:(context:any)=>{
       const meta=context.table.options.meta as Meta,form=meta.forms[context.row.original.key]||context.row.original;
       const valid=form.dateFrom&&form.dateTo&&form.dateFrom<=form.dateTo&&form.amount!==''&&Number.isFinite(Number(form.amount));
@@ -126,7 +146,7 @@ export default forwardRef<VehicleAmountsHandle,Props>(function OakVehicleAmounts
       const basis=fuel?fuel.pendingReason||(fuel.periodMiles!=null?`${fuel.rangeMiles} / ${fuel.periodMiles} mi · $${fuel.unitPrice?.toFixed(6)}/mi`:'整笔周期费用'):result?`${result.overlapDays} / ${result.totalDays} 天`:'全部日期';
       return <div className="oak-allocation-cell" title={basis}><strong>{result?result.allocatedAmount==null?'待核对':incomeMoney(result.allocatedAmount):valid?incomeMoney(Number(form.amount)):'—'}</strong><small>{fuel?.pendingReason?'里程待补':fuel?.periodMiles!=null?`${fuel.rangeMiles} / ${fuel.periodMiles} mi`:basis}</small></div>;
     }}]),
-    {id:'note',header:'单据 / 备注',size:Math.max(260,containerWidth-(category==='labor'?1025:category==='maintenance'?750:category==='fuel'?1035:905)),cell:context=>{const record=context.row.original;const meta=context.table.options.meta as Meta;return <div className="oak-payroll-note"><Field record={record} field="note" meta={meta}/>{record.payroll?<button className="icon-button" title={`查看工资原表 ${record.payroll.sheetName}`} onClick={()=>meta.openPayroll(record.payroll!)}><FileText size={15}/></button>:null}</div>;}},
+    {id:'note',header:'单据 / 备注',size:Math.max(category==='fuel'?180:260,containerWidth-(category==='labor'?1025:category==='maintenance'?750:category==='fuel'?1155:905)),cell:context=>{const record=context.row.original;const meta=context.table.options.meta as Meta;return <div className="oak-payroll-note"><Field record={record} field="note" meta={meta}/>{record.payroll?<button className="icon-button" title={`查看工资原表 ${record.payroll.sheetName}`} onClick={()=>meta.openPayroll(record.payroll!)}><FileText size={15}/></button>:null}</div>;}},
     {id:'actions',header:'保存状态',size:100,cell:context=>{const record=context.row.original,key=record.key;const meta=context.table.options.meta as Meta;if(record.source==='repair'&&record.repair)return <div className="oak-amount-actions"><button className="icon-button" title={`查看维修账单 ${record.repair.invoiceNumber}`} onClick={()=>meta.openRepair(record.repair!)}><FileText size={16}/></button><small className="oak-source-tag">维修库</small></div>;return <div className="oak-amount-actions"><button className="icon-button" title={`保存明细 ${key}`} disabled={meta.busy[key]} onClick={()=>meta.save(key,true)}><Save size={16}/></button><button className="icon-button danger-icon" title={`删除明细 ${key}`} disabled={meta.busy[key]} onMouseDown={event=>event.preventDefault()} onClick={()=>meta.remove(key)}><Trash2 size={15}/></button><small className={meta.errors[key]?'loss':meta.busy[key]||meta.dirty[key]?'pending':'profit'}>{meta.errors[key]||(meta.busy[key]?'保存中':meta.dirty[key]?'待保存':'已保存')}</small></div>;}}
   ],[category,containerWidth]);
   const tableData=useMemo(()=>{const records=(data?.records||[]).map(record=>toForm(record));const keys=new Set(records.map(record=>record.key));const pinned=newKeys.map(key=>forms[key]).filter(form=>form&&(!form.id||dirty[form.key]||keys.has(form.key)));return [...new Map([...pinned,...records].map(form=>[form.key,form])).values()];},[newKeys,forms,data,dirty]);
@@ -143,10 +163,11 @@ export default forwardRef<VehicleAmountsHandle,Props>(function OakVehicleAmounts
   function exportCsv(){
     if(!data)return;const cell=(value:unknown)=>`"${(typeof value==='number'?String(value):String(value??'').replace(/^[\s]*[=+@-]/,"'$&")).replace(/"/g,'""')}"`;
     const fuel=category==='fuel';
-    const lines=[['车号','司机','开始日期','结束日期','本笔金额',...(fuel?['工单 mile 数','里程统计区间','里程状态']:[]),...(category==='maintenance'?[]:['计入核算金额']),...(fuel?['分摊状态']:[]),'备注'],...data.records.map(record=>{
-      const vehicle=data.vehicles.find(item=>item.id===record.vehicleId),mileage=record.workMileage;
+    const lines=[['车号','司机','开始日期','结束日期','本笔金额',...(fuel?['工单 mile 数','里程统计区间','里程状态','油费 / mi','单价状态']:[]),...(category==='maintenance'?[]:['计入核算金额']),...(fuel?['分摊状态']:[]),'备注'],...data.records.map(record=>{
+      const vehicle=data.vehicles.find(item=>item.id===record.vehicleId),mileage=record.workMileage,cost=record.fuelUnitCost;
       return[vehicle?.vehicleNumber,vehicle?.driverName,record.dateFrom,record.dateTo,record.amount,
-        ...(fuel?[mileage?.miles,mileage?`${mileage.dateFrom} 至 ${mileage.dateTo}`:'',mileage?.pendingReason||(mileage?'完整':'')]:[]),
+        ...(fuel?[mileage?.miles,mileage?`${mileage.dateFrom} 至 ${mileage.dateTo}`:'',mileage?.pendingReason||(mileage?'完整':''),
+          cost?.rate==null?null:Number(cost.rate.toFixed(3)),cost?.pendingReason||(cost?`同车同周期 ${cost.recordCount} 笔`:'')]:[]),
         ...(category==='maintenance'?[]:[record.allocation?record.allocation.allocatedAmount:record.amount]),
         ...(fuel?[record.allocation&&'pendingReason' in record.allocation?record.allocation.pendingReason||'按作业里程分摊':'整笔周期费用']:[]),record.note];
     })];

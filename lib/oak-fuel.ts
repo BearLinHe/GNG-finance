@@ -8,6 +8,8 @@ export type FuelMileageContext={days:FuelMileageDay[];coverage:VehicleRange[];ga
 export type FuelMileageSource={driverName:string;sheetName:string;fileHash:string;fileName:string;dateFrom:string|null;dateTo:string|null;taskIds?:string[]};
 export type FuelAllocation={allocatedAmount:number|null;overlapDays:number;totalDays:number;basis:'mileage';periodMiles:number|null;rangeMiles:number|null;unitPrice:number|null;pendingReason?:string};
 export type FuelWorkMileage=VehicleRange&{miles:number|null;pendingReason?:string};
+export type FuelUnitCost={rate:number|null;amount:number|null;recordCount:number;pendingReason?:string};
+type FuelPeriodRecord=VehicleRange&{vehicleId:string;amount:number};
 const day=(date:string)=>Date.parse(`${date}T00:00:00Z`)/86400000;
 const overlaps=(a:VehicleRange,b:VehicleRange)=>a.dateFrom<=b.dateTo&&a.dateTo>=b.dateFrom;
 const validMiles=(miles:number|null):miles is number=>miles!=null&&Number.isFinite(miles)&&miles>=0;
@@ -81,4 +83,24 @@ export function allocateFuelAmount(record:VehicleRange&{amount:number},range:Veh
  // Round cumulative mileage shares so adjacent periods reconcile to the original cents.
  const prefix=(miles:number)=>Number((BigInt(cents)*BigInt(miles)*2n+BigInt(total))/(BigInt(total)*2n));
  return {...result,allocatedAmount:(prefix(before+within)-prefix(before))/100,periodMiles:total/100,rangeMiles:within/100,unitPrice:record.amount/(total/100)};
+}
+
+export const fuelPeriodKey=(record:VehicleRange&{vehicleId:string})=>JSON.stringify([record.vehicleId,record.dateFrom,record.dateTo]);
+
+export function summarizeFuelPeriods(visible:FuelPeriodRecord[],records:FuelPeriodRecord[],range:VehicleRange|undefined,contexts:Record<string,FuelMileageContext>){
+ const groups=new Map(visible.map(record=>[fuelPeriodKey(record),{record,fees:[] as FuelPeriodRecord[]}]));
+ for(const fee of records)groups.get(fuelPeriodKey(fee))?.fees.push(fee);
+ return new Map([...groups].map(([key,{record,fees}])=>{
+  const context=contexts[record.vehicleId];
+  const workMileage=summarizeFuelWorkMileage(record,range,context);
+  const amounts=fees.map(fee=>range?allocateFuelAmount(fee,range,context).allocatedAmount:fee.amount);
+  const cents=amounts.reduce<number>((total,amount)=>total+Math.round((amount??0)*100),0);
+  const amount=!amounts.length||amounts.some(value=>value==null)||!Number.isSafeInteger(cents)?null:cents/100;
+  const fuelUnitCost:FuelUnitCost={rate:null,amount,recordCount:fees.length};
+  if(workMileage?.pendingReason)fuelUnitCost.pendingReason=workMileage.pendingReason;
+  else if(amount==null)fuelUnitCost.pendingReason='区间油费尚未核对';
+  else if(!workMileage?.miles)fuelUnitCost.pendingReason='统计区间没有工单里程，不能计算单价';
+  else fuelUnitCost.rate=amount/workMileage.miles;
+  return [key,{workMileage,fuelUnitCost}];
+ }));
 }
