@@ -35,6 +35,7 @@ function sections({ sheet, rowCount, columnCount }: ReturnType<typeof workbookDa
         if (/^(柜号|container|reference)$/.test(label)) columns.reference = col;
         if (/^(miles|里程)$/.test(label) && !columns.miles) columns.miles = col;
         if (label === 'rate' && !columns.rate) columns.rate = col;
+        if (label === 'loadnum' && !columns.loadNum) columns.loadNum = col;
       }
       if (!columns.from || !columns.to || !columns.nature) continue;
       let totalRow = 0;
@@ -42,8 +43,9 @@ function sections({ sheet, rowCount, columnCount }: ReturnType<typeof workbookDa
       let ratePayroll = false;
       if (!columns.driver && !columns.amount) {
         // A Rate column is payroll only in the CA layout with an explicit sum of its detail rows.
-        if (columns.reference || columns.from !== start + 1 || columns.to !== start + 2 || columns.nature !== start + 3
-          || columns.miles !== start + 4 || columns.rate !== start + 5 || totalRow <= row + 1) continue;
+        const layout = columns.loadNum === start + 1 ? ['loadNum','from','to','nature','miles','rate']
+          : columns.loadNum ? ['from','to','nature','loadNum','miles','rate'] : ['from','to','nature','miles','rate'];
+        if (columns.reference || !layout.every((name, index) => columns[name] === start + index + 1) || totalRow <= row + 1) continue;
         const total = sheet.getCell(totalRow, columns.rate), col = total.address.replace(/\d+$/, '');
         const formula = total.formula?.replace(/[\s$]/g, '').replace(/^=/, '').toUpperCase();
         if (formula !== `SUM(${col}${row + 1}:${col}${totalRow - 1})`) continue;

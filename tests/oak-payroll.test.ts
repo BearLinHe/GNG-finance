@@ -101,6 +101,27 @@ test('CA Rate does not infer pay without a matching total formula and a cached t
   sheet.getCell('F3').value=0;sheet.getCell('F4').value=0;sheet.getCell('F5').value={formula:'SUM(F3:F4)',result:0};
   assert.equal((await parse(workbook)).sheets[0].amount,0);
 });
+test('CA Rate supports a Load Num column after Nature or immediately after Date',async()=>{
+  const workbook=new ExcelJS.Workbook();
+  for(const [index,afterDate] of [false,true].entries()){
+    const sheet=workbook.addWorksheet(index?'李屈':'翁浩德');
+    sheet.addRow(['CA payroll']);
+    const headers=['Date','From','To','Nature','Miles','Rate',null,'CA','NV',null,'MILES','Gallon'];
+    const first=[new Date('2026-10-19'),'SFO','95357','DEL',81,80];
+    const second=[null,'95357','SFO','EMPTY',96,120];
+    const loadIndex=afterDate?1:4;
+    headers.splice(loadIndex,0,'Load Num');
+    first.splice(loadIndex,0,'LOAD-1');second.splice(loadIndex,0,'LOAD-2');
+    sheet.addRow(headers);sheet.addRow(first);sheet.addRow(second);
+    sheet.getCell('A5').value='Total';
+    sheet.getCell('G5').value={formula:'SUM(G3:G4)',result:200};
+  }
+  const buffer=await bytes(workbook);
+  const preview=await parsePayrollWorkbook(buffer,'加州-10_17-10_23.xlsx',oakVehicleSeeds);
+  assert.deepEqual(preview.sheets.map(sheet=>sheet.amount),[200,200]);
+  assert.ok(preview.sheets.every(sheet=>sheet.selected && sheet.candidates[0].cells[0].address==='G5'));
+  assert.equal((await parseDriverWorkbook(buffer,'加州-10_17-10_23.xlsx')).tasks.length,4);
+});
 test('real worksheet content outside the limits still names the affected sheet and cell',async()=>{
   const workbook=new ExcelJS.Workbook();addCaliforniaRateSheet(workbook);
   workbook.addWorksheet('Other').getCell('CW2').value={formula:'0',result:0};
