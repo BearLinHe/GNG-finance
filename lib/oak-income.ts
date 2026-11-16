@@ -1,5 +1,5 @@
 import type { DriverDay, DriverTask } from "./oak-driver-types";
-import { vehicleForSubject, type OakVehicle } from "./oak-vehicles";
+import { vehicleForSubject, vehicleSubjectKey, type OakVehicle } from "./oak-vehicles";
 
 export type IncomeRule = {
   id: number; name: string; workLabel: string; fromLocation: string | null; toLocation: string | null;
@@ -78,6 +78,54 @@ export function summarizeIncome(tasks: DriverTask[]): IncomeSummary {
 }
 
 type RatedTask = DriverTask & { income: TaskIncome };
+
+const davidBase = "94587";
+const davidTripAmount = 900;
+export function isDavidR002Task(task: DriverTask) {
+  return normalizeIncomeText(task.reference) === "R002" && ["davidgao", "david高"].includes(vehicleSubjectKey(task.driverName));
+}
+
+function priceDavidR002Trips(tasks: RatedTask[], reviews: IncomeReview[]) {
+  const sheets = new Map<string, RatedTask[]>();
+  const dayBatches = new Map<string, Set<number>>();
+  const reviewedAnchors = new Set(reviews.filter(review => review.mode === "included").map(review => review.includedTaskId));
+  for (const task of tasks) {
+    if (!task.id || task.importId == null || !isDavidR002Task(task)) continue;
+    const key = JSON.stringify([task.importId, task.sheetName, task.section, task.driverName]);
+    const sheet = sheets.get(key) || [];
+    sheet.push(task);
+    sheets.set(key, sheet);
+    const batches = dayBatches.get(task.workDate) || new Set<number>();
+    batches.add(task.importId);
+    dayBatches.set(task.workDate, batches);
+  }
+  for (const sheet of sheets.values()) {
+    let trip: RatedTask[] = [];
+    for (const leg of sheet.sort((a, b) => a.sourceRow - b.sourceRow)) {
+      const from = normalizeIncomeText(leg.fromLocation), to = normalizeIncomeText(leg.toLocation);
+      const previous = trip.at(-1);
+      if (previous && (leg.sourceRow !== previous.sourceRow + 1 || leg.workDate < previous.workDate ||
+        from !== normalizeIncomeText(previous.toLocation))) trip = [];
+      if (!from || !to || dayBatches.get(leg.workDate)!.size > 1) { trip = []; continue; }
+      if (!trip.length && (from !== davidBase || to === davidBase)) continue;
+      trip.push(leg);
+      if (to !== davidBase) continue;
+      const [anchor, ...rest] = trip;
+      trip = [];
+      if (anchor.income.review && anchor.income.review.mode !== "manual") continue;
+      if (rest.some(task => reviewedAnchors.has(task.id!) || (task.income.review &&
+        (task.income.review.mode !== "included" || task.income.review.includedTaskId !== anchor.id)))) continue;
+      if (!anchor.income.review) Object.assign(anchor.income, {
+        status: "priced", workLabel: "R002", amount: davidTripAmount, source: "rule", billingBasis: "trip",
+        basis: `David Gao R002 · $${davidTripAmount.toFixed(2)} / 趟（${davidBase} 往返，${rest.length + 1} 段）`,
+      } satisfies Partial<TaskIncome>);
+      for (const leg of rest) if (!leg.income.review) Object.assign(leg.income, {
+        status: "included", workLabel: "R002", amount: 0, source: "included", includedTaskId: anchor.id!,
+        basis: `已含在 ${anchor.workDate} R002 整趟收入中 · 原表第 ${anchor.sourceRow} 行`,
+      } satisfies Partial<TaskIncome>);
+    }
+  }
+}
 
 function separatedSck8Returns(candidates: RatedTask[], tasks: RatedTask[], rule: IncomeRule) {
   if (normalizeIncomeWork(rule.workLabel) !== "SCK8") return null;
@@ -177,6 +225,8 @@ export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews:
       income.status = "priced"; income.amount = review.amount; income.source = "manual"; income.basis = `人工核定${review.note ? `：${review.note}` : ""}`;
     } else if (review?.mode === "included") {
       income.basis = "等待主作业收入确认";
+    } else if (!review && isDavidR002Task(task)) {
+      income.basis = "尚未确认完整的 94587 往返，或有路段需人工核对";
     } else if (!workLabel) {
       income.basis = "原表未注明作业类型，需核对作业";
     } else {
@@ -223,6 +273,7 @@ export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews:
     basis: `已含在 ${departure.workDate} SCK8 整趟收入中 · 原表第 ${departure.sourceRow} 行`,
   } satisfies Partial<TaskIncome>);
   priceR001Trips(tasks, rules, vehicles);
+  priceDavidR002Trips(tasks, reviews);
   for (const task of tasks) {
     if (task.income.review?.mode !== "included") continue;
     const anchor = byId.get(task.income.includedTaskId || "");

@@ -104,8 +104,9 @@ export async function listDriverActivities(params: {
         hasOutOfPeriodRecords: item.recordDateFrom < period.from || item.recordDateTo > period.to };
     });
     const rules = await readIncomeRules(client);
-    const reviews = await readIncomeReviews(client, periodDays.flatMap((day: { tasks: DriverTask[] }) => day.tasks.map(task => task.id!)));
-    const context = await readIncomeContext(client, periodDays.flatMap((day: { tasks: DriverTask[] }) => day.tasks.map(task => task.id!)), reviews);
+    const selectedTasks = periodDays.flatMap((day: { tasks: DriverTask[] }) => day.tasks) as DriverTask[];
+    const reviews = await readIncomeReviews(client, selectedTasks.map(task => task.id!));
+    const context = await readIncomeContext(client, selectedTasks, reviews);
     // Price complete driver-days before text search so an included return keeps its main-job context.
     const search = params.search.trim().toLocaleLowerCase();
     const ratedDays = priceDriverDays([...periodDays, ...context.days], rules, [...reviews, ...context.reviews], await readOakVehicles(client)).slice(0, periodDays.length).map(day => {
