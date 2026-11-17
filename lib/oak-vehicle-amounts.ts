@@ -25,6 +25,16 @@ export const amountCategories = ["maintenance", "labor", "insurance", "income", 
 const day = (date: string) => Date.parse(`${date}T00:00:00Z`) / 86400000;
 export const periodDays = (range: VehicleRange) => day(range.dateTo) - day(range.dateFrom) + 1;
 export const overlaps = (a: VehicleRange, b: VehicleRange) => a.dateFrom <= b.dateTo && a.dateTo >= b.dateFrom;
+export function maintenanceReviewIssue(status: RepairFeedStatus, vehicleId: string, rows: VehicleAmount[]): string | null {
+  if (!status.available) return status.message || '维修库暂时无法读取';
+  if (status.reviewVehicleIds?.includes(vehicleId)) return '维修库账单金额或日期待核对';
+  const invoices = rows.filter(r => r.source === 'repair');
+  const manual = rows.filter(r => r.source !== 'repair');
+  if (!status.matchedVehicleIds.includes(vehicleId) && !manual.length) return '维修库未匹配此车号';
+  if (invoices.some(r => r.repair?.dateBasis !== 'completed')) return '维修单缺少完工日期';
+  if (manual.some(r => r.sourceReviewId != null && invoices.some(i => overlaps(r,i)))) return '人工维修总额与维修库账单周期重叠，待核对';
+  return null;
+}
 export function allocateVehicleAmount(record: VehicleRange & { amount: number }, range: VehicleRange) {
   const totalDays = periodDays(record);
   const from = Math.max(day(record.dateFrom), day(range.dateFrom));
@@ -107,9 +117,8 @@ export function calculateDatedVehicleAccounting(vehicle: OakVehicle, range: Vehi
   }
   if(repairStatus){
     const manual=entries('maintenance').filter(item=>item.source!=='repair');const source=entries('maintenance').filter(item=>item.source==='repair');
-    const conflict=manual.some(item=>item.sourceReviewId!=null&&source.some(invoice=>overlaps(item,invoice)));
-    const known=repairStatus.available&&(repairStatus.matchedVehicleIds.includes(vehicle.id)||manual.length>0)&&!source.some(item=>item.repair?.dateBasis!=='completed')&&!conflict&&!repairStatus.reviewVehicleIds?.includes(vehicle.id);
-    row.lines.maintenance={amount:known?[...manual,...source].reduce((sum,item)=>sum+Math.round((item.allocatedAmount??0)*100),0)/100:null,source:known?'ledger':'missing',basis:!repairStatus.available?repairStatus.message:conflict?'人工维修总额与维修库账单周期重叠，待核对':!repairStatus.matchedVehicleIds.includes(vehicle.id)&&!manual.length?'维修库未匹配此车号':`${source.length} 笔维修库账单 · ${manual.length} 笔人工明细`};
+    const issue=maintenanceReviewIssue(repairStatus,vehicle.id,entries('maintenance'));
+    row.lines.maintenance={amount:issue?null:sum('maintenance'),source:issue?'missing':'ledger',basis:issue??`${source.length} 笔维修库账单 · ${manual.length} 笔人工明细`};
   }
   applyOwnerVehicleCosts(row.lines,roles.size===1&&roles.has('owner')&&!uncoveredTasks.some(task=>!taskPayeeType(task)));
   row.otherAmount = sum("other"); row.amounts = amounts; row.review = review; row.stale = false;

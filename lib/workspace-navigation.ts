@@ -1,5 +1,5 @@
 export type AccountingModule = 'external' | 'sav' | 'oak-transport';
-export type OakWorkspaceView = 'vehicles' | 'maintenance' | 'labor' | 'insurance' | 'income' | 'fuel' | 'other' | 'activities' | 'rules' | 'jobs' | 'settlements';
+export type OakWorkspaceView = 'vehicles' | 'maintenance' | 'labor' | 'insurance' | 'income' | 'fuel' | 'other' | 'activities' | 'rules' | 'jobs' | 'settlements' | 'assistant';
 export type WorkspaceNavigation = {
   module: AccountingModule;
   tab: 'initial' | 'container' | 'fees';
@@ -13,7 +13,7 @@ const choices = {
   module: ['external', 'sav', 'oak-transport'], tab: ['initial', 'container', 'fees'],
   initialKind: ['unload', 'direct_delivery'], containerKind: ['unload', 'direct_delivery'],
   standardCategory: ['transport', 'warehouse', 'domestic'],
-  oakView: ['vehicles', 'maintenance', 'labor', 'insurance', 'income', 'fuel', 'other', 'activities', 'rules', 'jobs', 'settlements']
+  oakView: ['vehicles', 'maintenance', 'labor', 'insurance', 'income', 'fuel', 'other', 'activities', 'rules', 'jobs', 'settlements', 'assistant']
 } as const;
 const defaults: WorkspaceNavigation = { module: 'external', tab: 'initial', initialKind: 'unload', containerKind: 'unload', standardCategory: 'transport', oakView: 'vehicles' };
 

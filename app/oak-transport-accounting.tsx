@@ -12,7 +12,7 @@ import OakWeeklySettlements from "./oak-weekly-settlements";
 import { payeeIdentity, summarizePayeeTypes, type PayeeType } from "@/lib/oak-payee";
 import { ProfitResult } from "./oak-period-profit";
 import type { PeriodProfit } from "@/lib/oak-period-profit";
-import OakVehicleAccounting,{type VehicleSummaryHandle} from "./oak-vehicle-table";
+import OakDriverAccounting from './oak-driver-accounting';
 import { isVehicleAccountingView, type VehicleAccountingView } from "@/lib/oak-vehicle-accounting";
 import OakVehicleAmounts,{type AmountSelection,type VehicleAmountsHandle} from "./oak-vehicle-amounts";
 import type { VehicleAmountCategory } from "@/lib/oak-vehicle-amounts";
@@ -172,13 +172,12 @@ export default function OakTransportAccounting({initialView='vehicles',onViewCha
   const [workspaceView, setWorkspaceView] = useState<OakWorkspaceView>(initialView);
   const [amountsDirty,setAmountsDirty]=useState(false);
   const [amountSelection,setAmountSelection]=useState<AmountSelection|null>(null);
-  const summaryRef=useRef<VehicleSummaryHandle>(null),amountsRef=useRef<VehicleAmountsHandle>(null),navigationSequence=useRef(0);
+  const amountsRef=useRef<VehicleAmountsHandle>(null),navigationSequence=useRef(0);
   const sourceMenu = useRef<HTMLDetailsElement>(null);
   const primaryView: VehicleAccountingView = isVehicleAccountingView(workspaceView) ? workspaceView : workspaceView === "settlements" ? "labor" : "income";
   async function openWorkspace(next: typeof workspaceView,selection:AmountSelection|null=null) {
     if(next===workspaceView&&!selection)return;
     const sequence=++navigationSequence.current;
-    if(workspaceView==='vehicles'&&summaryRef.current&&!await summaryRef.current.flush()){window.alert('自动保存未完成，请先修正表格中的提示。');return;}
     if(amountsRef.current&&!await amountsRef.current.flush()&&!window.confirm('明细有未填写完整或保存失败的内容，放弃填写并切换？'))return;
     if(sequence!==navigationSequence.current)return;
     setAmountSelection(selection);
@@ -327,7 +326,7 @@ export default function OakTransportAccounting({initialView='vehicles',onViewCha
     <section className="oak-driver-workspace" aria-label="OAK 运输部司机周期作业">
       <div className="oak-workspace-nav">
         <div className="oak-income-tabs" role="tablist" aria-label="运输部核算视图">
-          <button role="tab" aria-selected={primaryView === "vehicles"} className={primaryView === "vehicles" ? "active" : ""} onClick={() => openWorkspace("vehicles")}><Truck size={16} />单车核算</button>
+          <button role="tab" aria-selected={primaryView === "vehicles"} className={primaryView === "vehicles" ? "active" : ""} onClick={() => openWorkspace("vehicles")}><UserRound size={16} />司机盈亏</button>
           <button role="tab" aria-selected={primaryView === "maintenance"} className={primaryView === "maintenance" ? "active" : ""} onClick={() => openWorkspace("maintenance")}><Wrench size={16} />维修费</button>
           <button role="tab" aria-selected={primaryView === "labor"} className={primaryView === "labor" ? "active" : ""} onClick={() => openWorkspace("labor")}><Wallet size={16} />司机工资</button>
           <button role="tab" aria-selected={primaryView === "insurance"} className={primaryView === "insurance" ? "active" : ""} onClick={() => openWorkspace("insurance")}><ShieldCheck size={16} />车辆保险</button>
@@ -342,7 +341,7 @@ export default function OakTransportAccounting({initialView='vehicles',onViewCha
           <button onClick={() => openWorkspace("other")}><FileText size={15} />其他费用</button>
         </div></details>
       </div>
-      <div className="oak-accounting-view" hidden={workspaceView!=="vehicles"}><OakVehicleAccounting ref={summaryRef} view="vehicles" active={workspaceView==="vehicles"} onOpenAmounts={(category,row)=>openWorkspace(category,{vehicleId:row.vehicle.id,dateFrom:row.dateFrom,dateTo:row.dateTo,payeeType:row.payeeType})}/></div>
+      <div className="oak-accounting-view" hidden={workspaceView!=="vehicles"}><OakDriverAccounting active={workspaceView==="vehicles"}/></div>
       {workspaceView==='income'?<OakVehicleIncome key={`income-${amountSelection?.vehicleId||''}-${amountSelection?.dateFrom||''}-${amountSelection?.dateTo||''}`} ref={amountsRef} selection={amountSelection} onDirtyChange={setAmountsDirty}/>:null}
       {(isVehicleAccountingView(workspaceView)&&workspaceView!=="vehicles"&&workspaceView!=='income')||workspaceView==='other'?<OakVehicleAmounts ref={amountsRef} key={`${workspaceView}:${amountSelection?.vehicleId||''}:${amountSelection?.dateFrom||''}:${amountSelection?.dateTo||''}`} category={workspaceView as VehicleAmountCategory} selection={amountSelection} onDirtyChange={setAmountsDirty}/>:null}
       {workspaceView === "rules" ? <OakIncomeRules onChange={() => setReload(value => value + 1)} /> : null}

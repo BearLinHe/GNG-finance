@@ -31,6 +31,9 @@ import { money } from "@/lib/money";
 import OperatingStandards, { type StandardCategory } from "./operating-standards";
 import OakTransportAccounting from "./oak-transport-accounting";
 import SavContainerAccounting from "./sav-container-accounting";
+import FinanceAssistantDock from './finance-assistant-dock';
+import { FinancePageContext, localAssistantEnabled, type FactSource } from './finance-page-context';
+import type { AssistantPage } from '@/lib/finance-assistant';
 import {readWorkspaceNavigation,workspaceNavigationKey,workspaceNavigationUrl,type AccountingModule,type OakWorkspaceView} from "@/lib/workspace-navigation";
 
 type TabKey = "initial" | "container" | "fees";
@@ -633,6 +636,8 @@ function DataTable<T>({
 }
 
 export default function Home() {
+  const assistantFacts = useRef<FactSource|null>(null);
+  const [legacyAssistant,setLegacyAssistant]=useState(false);
   const [activeModule, setActiveModule] = useState<AccountingModule>("external");
   const [navigationReady, setNavigationReady] = useState(false);
   const [oakView, setOakView] = useState<OakWorkspaceView>('vehicles');
@@ -688,7 +693,8 @@ export default function Home() {
     let stored: string | null = null;
     try { stored = window.sessionStorage.getItem(workspaceNavigationKey); } catch { /* URL navigation still works without storage. */ }
     const restored = readWorkspaceNavigation(window.location.search, stored);
-    setActiveModule(restored.module); setTab(restored.tab); setOakView(restored.oakView);
+    setActiveModule(restored.module); setTab(restored.tab); setOakView(restored.oakView === 'assistant' ? 'vehicles' : restored.oakView);
+    setLegacyAssistant(restored.module==='oak-transport' && restored.oakView==='assistant');
     setInitialKind(restored.initialKind); setContainerKind(restored.containerKind); setStandardCategory(restored.standardCategory);
     setExternalNavExpanded(restored.module === 'external');
     setExpandedNav(restored.tab === 'fees' ? 'standards' : restored.tab === 'container' ? 'profit' : 'source');
@@ -1354,7 +1360,7 @@ export default function Home() {
   ], []);
 
   return (
-    <div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <FinancePageContext.Provider value={assistantFacts}><div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}${localAssistantEnabled?' with-assistant':''}`}>
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark">G</div>
@@ -2174,6 +2180,16 @@ export default function Home() {
         </>}
         </main>
       </div>
+      {navigationReady && localAssistantEnabled && <FinanceAssistantDock initialOpen={legacyAssistant} module={activeModule} title={activeModule==='external'?'OAK 单柜核算 · '+pageTitle:pageTitle} readPage={():AssistantPage=>{
+        const key=activeModule==='external'?tab:activeModule==='sav'?'sav':oakView;
+        let facts:object|null=assistantFacts.current?.key===key ? assistantFacts.current.read() : null;
+        if(activeModule==='external' && !loading && !error){
+          if(tab==='initial')facts={业务:operationModeLabels[initialKind],页码:initialPage,符合筛选的订单数:initialTotalCount,本页订单数:initialRows.length,本页有效账单数:initialRows.reduce((n,r)=>n+r.invoiceCount,0),本页账单金额:Number(initialRows.reduce((n,r)=>n+Number(r.sourceInvoiceTotalAmount),0).toFixed(2))};
+          if(tab==='container')facts={业务:operationModeLabels[containerKind],页码:containerPage,符合筛选的柜数:containerProfitTotalCount,本页柜数:containerProfitRows.length,仅本页合计:containerProfitPageSummary,本页有未匹配费用的柜数:containerProfitRows.filter(r=>r.unmatchedExpenseCount>0).length};
+        }
+        return {module:activeModule,title:pageTitle,facts:JSON.stringify(facts ?? {状态:'无可用的页面摘要，不推断账目'})};
+      }}/>}
     </div>
+    </FinancePageContext.Provider>
   );
 }

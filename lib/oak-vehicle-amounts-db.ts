@@ -57,9 +57,17 @@ export async function saveVehicleAmount(value: unknown) {
   await ensureSystemSchema();
   return withSystemClient(async client => {
     await client.query("begin");
-    await client.query("select pg_advisory_xact_lock_shared(19431,0)");
     try {
+      await client.query("select pg_advisory_xact_lock_shared(19431,0)");
       await client.query("select pg_advisory_xact_lock(19431,3)");
+      const result = await writeVehicleAmountLocked(client, input);
+      await client.query("commit"); return result;
+    } catch (e) { await client.query("rollback");throw e; }
+  });
+}
+
+// Caller owns the transaction and the vehicle-amount ledger lock.
+export async function writeVehicleAmountLocked(client: PoolClient, input: ReturnType<typeof validateVehicleAmount>, auditOrigin?: string) {
       const vehicle = await client.query("select id from oak_vehicles where id=$1", [input.vehicleId]);
       if (!vehicle.rowCount) throw new IncomeInputError("车辆不存在");
       const current = await client.query(`select ${columns},voided_at from oak_vehicle_amounts where ${input.id ? "id=$1" : "request_key=$1"} for update`, [input.id || input.requestKey]);
@@ -68,16 +76,14 @@ export async function saveVehicleAmount(value: unknown) {
       if (!input.id && current.rowCount) {
         const old=current.rows[0];
         if (["vehicleId","category","dateFrom","dateTo","amount","payeeType","note"].some(key=>old[key]!==input[key as keyof typeof input])) throw new IncomeInputError("重复请求内容不同，请刷新明细");
-        await client.query("commit"); return {success:true,id:old.id,version:old.version,duplicate:true};
+        return {success:true,id:old.id,version:old.version,duplicate:true};
       }
       const values=[input.vehicleId,input.category,input.dateFrom,input.dateTo,input.amount,input.payeeType,input.note];
       const saved=input.id ? await client.query(`update oak_vehicle_amounts set vehicle_id=$1,category=$2,date_from=$3::date,date_to=$4::date,amount=$5,payee_type=$6,note=$7,
         version=version+1,updated_at=now() where id=$8 returning id::text,version`,[...values,input.id]) :
         await client.query(`insert into oak_vehicle_amounts(vehicle_id,category,date_from,date_to,amount,payee_type,note,request_key) values($1,$2,$3::date,$4::date,$5,$6,$7,$8) returning id::text,version`,[...values,input.requestKey]);
-      await client.query(`insert into oak_workflow_audit(entity_kind,entity_id,event,details) values('vehicle_amount',$1,$2,$3::jsonb)`,[saved.rows[0].id,input.id?"修改周期明细":"新增周期明细",JSON.stringify({before:current.rows[0]||null,after:input})]);
-      await client.query("commit"); return {success:true,...saved.rows[0]};
-    } catch (e) { await client.query("rollback");throw e; }
-  });
+      await client.query(`insert into oak_workflow_audit(entity_kind,entity_id,event,details) values('vehicle_amount',$1,$2,$3::jsonb)`,[saved.rows[0].id,input.id?"修改周期明细":"新增周期明细",JSON.stringify({before:current.rows[0]||null,after:input,origin:auditOrigin})]);
+      return {success:true,...saved.rows[0]};
 }
 export async function voidVehicleAmount(value: unknown) {
   const body=value as Record<string,unknown>;

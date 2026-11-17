@@ -2,7 +2,7 @@ import type {PoolClient} from 'pg';
 import type {OakVehicle} from './oak-vehicles';
 import type {VehicleAmount} from './oak-vehicle-amounts';
 import type {VehicleRange} from './oak-vehicle-accounting';
-import {buildFuelMileageContexts,sumRecordedVehicleMiles,type FuelMileageContext} from './oak-fuel';
+import {buildFuelMileageContexts,sumRecordedVehicleMiles,type FuelMileageContext,type FuelMileageDay,type FuelMileageSource} from './oak-fuel';
 
 export async function readRecordedVehicleMiles(client:PoolClient,vehicles:OakVehicle[],vehicleId:string,range?:VehicleRange){
  const {rows}=await client.query<{driverName:string;miles:number}>(`select driver_name as "driverName",sum(miles)::float8 as miles
@@ -11,10 +11,8 @@ export async function readRecordedVehicleMiles(client:PoolClient,vehicles:OakVeh
  return sumRecordedVehicleMiles(vehicles,rows,vehicleId);
 }
 
-export async function readFuelMileage(client:PoolClient,vehicles:OakVehicle[],records:VehicleAmount[]):Promise<Record<string,FuelMileageContext>>{
- const fuel=records.filter(record=>record.category==='fuel');if(!fuel.length)return {};
- const from=fuel.map(record=>record.dateFrom).sort()[0],to=fuel.map(record=>record.dateTo).sort().at(-1)!;
- const {rows}=await client.query(`with relevant as (
+export async function readFuelMileageData(client:PoolClient,from:string,to:string){
+ const {rows}=await client.query<{days:Array<FuelMileageDay&{driverName:string}>;sources:FuelMileageSource[];wages:Pick<VehicleAmount,'id'|'category'|'vehicleId'|'dateFrom'|'dateTo'|'payroll'>[]}>(`with relevant as (
    select t.id,t.driver_name,t.sheet_name,t.work_date,t.miles,i.file_hash,i.file_name,i.period_from,i.period_to
    from oak_driver_tasks t join oak_driver_imports i on i.id=t.import_id
    where (t.work_date between $1::date and $2::date) or (i.period_from<=$2::date and i.period_to>=$1::date)
@@ -26,7 +24,14 @@ export async function readFuelMileage(client:PoolClient,vehicles:OakVehicle[],re
   select
    coalesce((select jsonb_agg(jsonb_build_object('driverName',driver_name,'workDate',work_date::text,'miles',miles)) from daily),'[]') as days,
    coalesce((select jsonb_agg(jsonb_build_object('driverName',driver_name,'sheetName',sheet_name,'fileHash',file_hash,'fileName',file_name,'dateFrom',period_from::text,'dateTo',period_to::text,'taskIds',task_ids)) from sources),'[]') as sources,
-   coalesce((select jsonb_agg(jsonb_build_object('vehicleId',vehicle_id,'dateFrom',date_from::text,'dateTo',date_to::text,'payroll',payroll_source)) from oak_vehicle_amounts
+   coalesce((select jsonb_agg(jsonb_build_object('id',id::text,'category',category,'vehicleId',vehicle_id,'dateFrom',date_from::text,'dateTo',date_to::text,'payroll',payroll_source)) from oak_vehicle_amounts
     where category='labor' and voided_at is null and payroll_source is not null and date_from<=$2::date and date_to>=$1::date),'[]') as wages`,[from,to]);
- return buildFuelMileageContexts(vehicles,rows[0].days,rows[0].sources,rows[0].wages);
+ return rows[0];
+}
+
+export async function readFuelMileage(client:PoolClient,vehicles:OakVehicle[],records:VehicleAmount[]):Promise<Record<string,FuelMileageContext>>{
+ const fuel=records.filter(record=>record.category==='fuel');if(!fuel.length)return {};
+ const from=fuel.map(record=>record.dateFrom).sort()[0],to=fuel.map(record=>record.dateTo).sort().at(-1)!;
+ const {days,sources,wages}=await readFuelMileageData(client,from,to);
+ return buildFuelMileageContexts(vehicles,days,sources,wages);
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useFinancePageFacts } from './finance-page-context';
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table";
 import {
   CalendarDays,
@@ -280,6 +281,9 @@ export default function OperatingStandards({ category }: { category: StandardCat
       row.billingMonth
     ].some((item) => String(item || "").toLowerCase().includes(value)));
   }, [category, customStandards, search, standardKind, transportRules, warehousePickupRules]);
+
+  useFinancePageFacts('fees',()=>loading||error?null:{类别:category,标准类型:standardKind,符合筛选数:rows.length,
+    前十项示例:rows.slice(0,10).map(r=>({项目:r.standardName,金额:r.amount,单位:r.unit,适用方式:r.applicationLabel}))});
 
   function openCreate() {
     const nextForm = emptyForm(standardKind);

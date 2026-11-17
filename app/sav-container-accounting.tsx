@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { ChevronLeft, ChevronRight, Download, FileText, RefreshCw, Search, Settings2, TriangleAlert, Truck, X } from "lucide-react";
 import type { SavAccountingResult, SavContainerResult, SavCostLine, SavGoodsStatus, SavPricingRule, SavTripResult } from "@/lib/sav-accounting-types";
 import "./sav-accounting.css";
+import { useFinancePageFacts } from './finance-page-context';
 
 type TripOverride = { miles?: number | null; stopCount?: number | null; explicitAmount?: number | null; note: string };
 type IncomeOverride = { amount: number; note: string };
@@ -233,6 +234,11 @@ export default function SavContainerAccounting() {
   const stock = useMemo(() => (data?.rows || []).flatMap(row => row.goods.filter(goods => goods.status === "in_stock" || goods.status === "returned" || goods.status === "pending").map(goods => ({ row, goods }))), [data]);
   const pages = Math.max(1, Math.ceil((view === "trips" ? data?.trips.length || 0 : view === "stock" ? stock.length : view === "reconciliation" ? data?.reconciliation?.rows.length || 0 : rows.length) / 50));
   const pagination = data?.pagination || { page: sourcePage, pageSize: sourcePageSize, totalCount: data?.rows.length || 0, totalPages: 1 };
+  useFinancePageFacts('sav',()=>loading||error||!data?null:{
+    口径:applied.scope==='all'?'全部订单。收入减运输支出不是整柜最终利润':'Excel核算范围',
+    当前视图:view,提柜开始:applied.dateFrom,提柜结束:applied.dateTo,页码:pagination.page,符合条件订单数:pagination.totalCount,
+    本页订单合计:data.summary,本页状态筛选:status,筛选后本页柜数:rows.length,...(view==='rules'?{运输计价:data.pricing}:{})
+  });
   const operationModes = [...(data?.operationModes || [{ operationMode: "unload", count: 0 }, { operationMode: "direct_delivery", count: 0 }])];
   if (filters.operationMode !== "all" && !operationModes.some(item => item.operationMode === filters.operationMode)) operationModes.push({ operationMode: filters.operationMode, count: 0 });
   useEffect(() => { setPage(value => Math.min(value, pages)); }, [pages]);

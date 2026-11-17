@@ -3,7 +3,7 @@ import type{VehicleRange}from'./oak-vehicle-accounting';
 import {matchesPayrollActivityLink,type PayrollActivityTarget} from './oak-payroll-activity';
 export type IncomeActivitySource={fileHash:string;sheetNames:string[];target?:PayrollActivityTarget};
 export type IncomeActivityGap=VehicleRange&{id:string;vehicleId:string;fileName:string;sheetName:string};
-export function incomeActivityGaps(records:VehicleAmount[],sources:IncomeActivitySource[],range:VehicleRange):IncomeActivityGap[]{
+export function incomeActivityGaps(records:Pick<VehicleAmount,'id'|'vehicleId'|'category'|'dateFrom'|'dateTo'|'payroll'>[],sources:IncomeActivitySource[],range:VehicleRange):IncomeActivityGap[]{
   const loaded=new Set(sources.flatMap(source=>source.sheetNames.map(name=>JSON.stringify([source.fileHash,name]))));
   const manual=records.filter(record=>record.category==='income');
   return records.filter(record=>record.category==='labor'&&record.payroll&&record.dateFrom<=range.dateTo&&record.dateTo>=range.dateFrom).flatMap(record=>{

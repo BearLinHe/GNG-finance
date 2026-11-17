@@ -1728,6 +1728,21 @@ button {
 .oak-income-tabs > button.active { border-bottom-color: var(--blue); color: #1d4ed8; font-weight: 600; }
 .oak-workspace-nav { display: flex; gap: 12px; align-items: center; min-width: 0; border-bottom: 1px solid var(--line); }
 .oak-workspace-nav > .oak-income-tabs { flex: 1; min-width: 0; border-bottom: 0; }
+.oak-driver-workspace { min-width: 0; }
+.oak-workspace-nav > .oak-income-tabs { overflow-x: auto; flex-wrap: nowrap; scrollbar-width: thin; }
+.oak-workspace-nav > .oak-income-tabs > button { flex: none; white-space: nowrap; }
+@media (min-width:681px) {
+  .with-assistant .side-nav { padding-bottom:74px; }
+}
+@media (max-width:680px) {
+  .oak-workspace-nav { align-items:flex-start; }
+  .oak-workspace-nav > .oak-income-tabs { display:grid; grid-template-columns:repeat(auto-fit,minmax(80px,1fr)); gap:0 4px; }
+  .oak-workspace-nav > .oak-income-tabs > button { min-height:44px; justify-content:center; }
+  .content-shell > .topbar:has(.top-actions:empty) { display:none; }
+  .with-assistant.app-shell { height:calc(100dvh - 58px - env(safe-area-inset-bottom)); min-height:0; overflow:auto; }
+  .with-assistant.app-shell::after { content:""; position:fixed; z-index:23; inset:auto 0 0; height:calc(58px + env(safe-area-inset-bottom)); background:white; border-top:1px solid var(--line); pointer-events:none; }
+  body:has(#finance-assistant-panel[open]) { overflow:hidden; }
+}
 .oak-accounting-view { min-width: 0; }
 .oak-source-menu { position: relative; flex: 0 0 auto; }
 .oak-source-menu > summary { list-style: none; cursor: pointer; }
