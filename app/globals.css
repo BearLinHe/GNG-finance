@@ -1979,6 +1979,16 @@ button {
 .oak-income-ledger-table tbody tr:nth-child(even) { background:#f7fafc; }
 .oak-income-ledger-table tbody tr:hover { background:#f0f7ff; }
 .oak-income-ledger-table small { display:block;margin-top:4px;color:var(--muted);font-size:10px;line-height:1.6; }
+.oak-income-inline-price input { box-sizing:border-box;width:100%;min-width:0;min-height:32px;padding:4px 6px;border:1px solid transparent;border-radius:4px;background:transparent;color:#0f766e;text-align:right;font:inherit;font-weight:600;font-variant-numeric:tabular-nums; }
+.oak-income-inline-price input::placeholder { color:#92560c;opacity:1; }
+.oak-price-field { position:relative; }
+.oak-price-field span { position:absolute;inset:0 7px;display:flex;align-items:center;justify-content:flex-end;pointer-events:none;color:#0f766e;font-weight:600;font-variant-numeric:tabular-nums; }
+.oak-price-field:focus-within span { visibility:hidden; }
+.oak-price-field[data-formatted=true]:not(:focus-within) input { color:transparent; }
+.oak-income-inline-price input:hover,.oak-income-inline-price input:focus { border-color:#aabbd0;background:#fff; }
+.oak-income-inline-price input:focus-visible { outline:2px solid #2864cf;outline-offset:-1px; }
+.oak-income-inline-price input[aria-invalid=true] { border-color:#b6382c; }
+.oak-income-inline-price .oak-price-error { color:#a43227; }
 .oak-income-route { display:grid;grid-template-columns:minmax(0,1fr) 13px minmax(0,1fr);align-items:center;gap:8px; }
 .oak-income-route svg { color:#8795a4; }
 .oak-income-manual-host { display:flex;flex-direction:column;min-height:0;overflow:auto;padding:16px; }
