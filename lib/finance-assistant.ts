@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { vehicleRange } from './oak-vehicle-accounting';
-import { incomeAmount } from './oak-income';
+import { incomeAmount, incomeText, type IncomeReview } from './oak-income';
+import type { DriverTask } from './oak-driver-types';
+import type { WorkDraft } from './finance-work-review';
 import { validateVehicleAmount, type VehicleAmount, type VehicleAmountInput } from './oak-vehicle-amounts';
 
 export class AssistantInputError extends Error {}
@@ -18,7 +20,19 @@ export function validateAssistantPage(raw:unknown):AssistantPage|undefined {
     throw new AssistantInputError('页面摘要无效，请刷新页面后重试');
   return {module:page.module!,title:page.title,facts:page.facts};
 }
-export type AssistantReply = { text:string; evidence?:string[]; draft?:{token:string;rows:EditRow[]} };
+export type AssistantReply = { text:string; evidence?:string[]; draft?:{token:string;rows:EditRow[]}; review?: IncomeReview; workDraft?:WorkDraft };
+export type TaskReviewContext = { task: DriverTask; anchors: DriverTask[] };
+
+export function taskReviewProposal(args: Record<string,unknown>, context: TaskReviewContext): IncomeReview {
+  const { mode } = args;
+  if (!context.task.id || (mode !== 'label' && mode !== 'manual' && mode !== 'included')) throw new AssistantInputError('作业或核对方式无效');
+  if (mode === 'included' && !context.anchors.some(row => row.id && row.id === args.includedTaskId)) throw new AssistantInputError('没有找到符合条件的主作业，请核对日期及柜号');
+  try {
+    return { taskId: context.task.id, mode, workLabel: incomeText(args.workLabel,120,mode==='label'),
+      amount: mode==='manual' ? incomeAmount(args.amount) : null, includedTaskId: mode==='included' ? String(args.includedTaskId) : null,
+      note: incomeText(args.note,1000) ?? '' };
+  } catch (err) { throw new AssistantInputError((err as Error).message); }
+}
 
 export function localAssistantRequest(request:Request, development:boolean) {
   if (!development) return false;

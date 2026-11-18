@@ -2,12 +2,23 @@ import { ensureSystemSchema, withSystemClient } from "./system-db";
 import { summarizeDriverPeriods, type DriverActivitiesResponse, type DriverImport, type DriverTask } from "./oak-driver-types";
 import { resolveDriverBatchPeriod, type DriverBatchPeriod } from "./oak-driver-batch";
 import { priceDriverDays, summarizeIncome } from "./oak-income";
-import { readIncomeContext, readIncomeReviews, readIncomeRules } from "./oak-income-db";
+import { IncomeInputError, incomeTaskScope, readIncomeContext, readIncomeReviews, readIncomeRules } from "./oak-income-db";
 import { summarizePayeeTypes } from "./oak-payee";
 import { pricePeriodProfits } from "./oak-period-profit-db";
 import { summarizePeriodProfits } from "./oak-period-profit";
 import { paginateDriverPeriods } from "./oak-pagination";
 import { readOakVehicles } from "./oak-vehicles-db";
+
+export async function readTaskReviewContext(id: string) {
+  const scope = await incomeTaskScope(id);
+  const data = await listDriverActivities({ ...scope, dateFrom: "", dateTo: "", search: "", page: 1, pageSize: 100 });
+  const tasks = data.periods.flatMap(period => period.days.flatMap(day => day.tasks))
+    .filter(task => task.importId === scope.importId && task.driverName === scope.driverName);
+  const task = tasks.find(row => row.id === id);
+  if (!task) throw new IncomeInputError("未找到选中的作业，请刷新");
+  const anchors = tasks.filter(row => row.id !== id && row.income?.status === "priced" && (row.income.billingBasis === "trip" || row.income.source === "manual"));
+  return { task, anchors };
+}
 
 export async function saveDriverWorkbook(fileName: string, fileHash: string, tasks: DriverTask[], batchPeriod?: DriverBatchPeriod) {
   if (!tasks.length) throw new Error("请至少选择一个有作业记录的工作表");

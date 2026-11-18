@@ -1,11 +1,12 @@
 'use client';
 
-import { ArrowLeftRight, Banknote, Calculator, CalendarDays, ChevronRight, Fuel, Plus, Save, ShieldCheck, Trash2, Truck, Wallet, Wrench } from 'lucide-react';
+import { ArrowLeftRight, Banknote, CalendarDays, ChevronRight, Fuel, Plus, Save, ShieldCheck, Trash2, Truck, Wallet, Wrench } from 'lucide-react';
 import { useEffect, useState, type FormEvent } from 'react';
 import { davidDriverKey, davidTrialRange, type DriverAccountingResponse, type DriverProfit, type DriverTimeline, type DriverUse } from '@/lib/oak-driver-accounting';
 import { IncomeDialog, incomeMoney, json } from './oak-income-controls';
 import styles from './oak-driver-accounting.module.css';
 import { useFinancePageFacts } from './finance-page-context';
+import { vehicleRange } from '@/lib/oak-vehicle-accounting';
 
 const api = '/api/oak-driver-accounting';
 const categories = [{ key: 'income', label: '作业收入' }, { key: 'labor', label: '司机 / 车主工资' }, { key: 'fuel', label: '油费' }, { key: 'insurance', label: '车辆保险' }, { key: 'maintenance', label: '车辆维修费' }] as const;
@@ -69,26 +70,35 @@ function AmountLine({ line, category, label, onOpen }: { line: DriverProfit[Cate
 }
 
 export default function OakDriverAccounting({ active }: { active: boolean }) {
-  const [driver, setDriver] = useState(davidDriverKey);
-  const [dates, setDates] = useState(davidTrialRange);
   const [query, setQuery] = useState({ driverKey: davidDriverKey, ...davidTrialRange });
-  const [data, setData] = useState<DriverAccountingResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [drivers, setDrivers] = useState<DriverAccountingResponse['drivers']>([]);
+  const [settled, setSettled] = useState<{ query: typeof query; data?: DriverAccountingResponse; error?: string }>();
   const [editing, setEditing] = useState(false);
   const [detail, setDetail] = useState<Category | null>(null);
-  const [revision, setRevision] = useState(0);
+  let rangeError = '';
+  if (!query.dateFrom || !query.dateTo) rangeError = '请选择完整的核算起止日期';
+  else { try { vehicleRange(query); } catch (err) { rangeError = (err as Error).message; } }
   useEffect(() => {
-    if (!active) return;
+    if (!active || rangeError) return;
     const controller = new AbortController();
-    setLoading(true); setError('');
-    fetch(`${api}?${new URLSearchParams(query)}`, { cache: 'no-store', signal: controller.signal })
-      .then(json<DriverAccountingResponse>).then(result => { if (!controller.signal.aborted) setData(result); })
-      .catch(err => { if (!controller.signal.aborted) setError((err as Error).message); })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [active, query, revision]);
-  const result = !error && !loading ? data : null;
+    const timer = window.setTimeout(() => {
+      fetch(`${api}?${new URLSearchParams(query)}`, { cache: 'no-store', signal: controller.signal })
+        .then(json<DriverAccountingResponse>).then(data => {
+          if (!controller.signal.aborted) { setDrivers(data.drivers); setSettled({ query, data }); }
+        }).catch(err => { if (!controller.signal.aborted) setSettled({ query, error: (err as Error).message }); });
+    }, 180);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [active, query, rangeError]);
+  const current = settled?.query === query ? settled : null;
+  const result = current?.data;
+  const error = rangeError || current?.error;
+  const loading = !result && !error;
+  const refresh = () => setQuery(q => ({ ...q }));
+  useEffect(()=>{
+    const reload=()=>setQuery(q=>({...q}));
+    window.addEventListener('oak-work-income-saved',reload);
+    return ()=>window.removeEventListener('oak-work-income-saved',reload);
+  },[]);
   const name = result?.drivers.find(item => item.key === result.timeline.driverKey)?.name ?? '';
   const number = (id: string | null) => result?.vehicles.find(item => item.id === id)?.vehicleNumber ?? '未登记';
   const net = result?.profit.net;
@@ -98,13 +108,12 @@ export default function OakDriverAccounting({ active }: { active: boolean }) {
 
   return <section className={styles.workspace} aria-label="司机盈亏" aria-busy={loading}>
     <div className={styles.title}><h2>司机盈亏</h2><span>USD</span></div>
-    <form className={styles.filters} onSubmit={event => { event.preventDefault(); setLoading(true); setQuery({ driverKey: driver, ...dates }); }}>
-      <label>司机<select aria-label="司机" value={driver} onChange={event => setDriver(event.target.value)}>{data?.drivers.map(item => <option key={item.key} value={item.key}>{item.name}</option>) ?? <option value={davidDriverKey}>David高</option>}</select></label>
-      <label>核算开始<input type="date" required max={dates.dateTo} value={dates.dateFrom} onChange={event => setDates({ ...dates, dateFrom: event.target.value })}/></label>
-      <label>核算结束<input type="date" required min={dates.dateFrom} value={dates.dateTo} onChange={event => setDates({ ...dates, dateTo: event.target.value })}/></label>
-      <button className="button primary" disabled={loading}><Calculator size={15}/>核算</button>
-    </form>
-    {error ? <p className="error" role="alert">{error}</p> : null}
+    <div className={styles.filters}>
+      <label>司机<select aria-label="司机" value={query.driverKey} onChange={e => setQuery({ ...query, driverKey: e.target.value })}>{drivers.length ? drivers.map(item => <option key={item.key} value={item.key}>{item.name}</option>) : <option value={davidDriverKey}>David高</option>}</select></label>
+      <label>核算开始<input type="date" required max={query.dateTo || undefined} value={query.dateFrom} onChange={e => setQuery({ ...query, dateFrom: e.target.value })}/></label>
+      <label>核算结束<input type="date" required min={query.dateFrom || undefined} value={query.dateTo} onChange={e => setQuery({ ...query, dateTo: e.target.value })}/></label>
+    </div>
+    {error ? <div className="error" role="alert">{error} {!rangeError && <button className="button ghost" onClick={refresh}>重试</button>}</div> : null}
     {result ? <>
       <div className={styles.overview} aria-label="司机盈亏汇总">
         <section className={styles.balance} data-state={net==null?'pending':net<0?'loss':net>0?'profit':'even'}>
@@ -114,12 +123,12 @@ export default function OakDriverAccounting({ active }: { active: boolean }) {
         </section>
         <section className={styles.breakdown}><h3>收支明细</h3><ul>{categories.map(c=><AmountLine key={c.key} category={c.key} label={c.label} line={result.profit[c.key]} onOpen={()=>setDetail(c.key)}/>)}</ul></section>
       </div>
-      <section className={styles.usage}><header><h3>周期内用车</h3><button className="button ghost" disabled={driver !== query.driverKey} onClick={() => setEditing(true)}><ArrowLeftRight size={15}/>换车记录</button></header>
+      <section className={styles.usage}><header><h3>周期内用车</h3><button className="button ghost" onClick={() => setEditing(true)}><ArrowLeftRight size={15}/>换车记录</button></header>
         {result.profit.periods.length?<ol>{result.profit.periods.map((period,i)=><li key={period.dateFrom}><div className={styles.truck}><Truck size={16}/><b>{number(period.vehicleId)}{period.vehicleId?' 号车':''}</b><small>{String(i+1).padStart(2,'0')}</small></div>
           <span>{period.dateFrom} 至 {period.dateTo}</span>{period.shared&&<em>用车日期重叠</em>}</li>)}</ol>:<p>本周期暂无用车记录</p>}
       </section>
     </> : !error && <p className={styles.state} role="status">{loading?'正在核算…':'暂无核算结果'}</p>}
-    {result && editing ? <TimelineEditor data={result} name={name} dateFrom={query.dateFrom} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); setLoading(true); setRevision(value => value + 1); }}/> : null}
+    {result && editing ? <TimelineEditor data={result} name={name} dateFrom={query.dateFrom} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); refresh(); }}/> : null}
     {result && detail ? <AmountDetails data={result} category={detail} onClose={() => setDetail(null)}/> : null}
   </section>;
 }

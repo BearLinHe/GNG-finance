@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowRight, Banknote, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
+import { ArrowRight, Banknote, MessagesSquare, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
 import { incomeWorkLabel, type IncomeRule, type IncomeSummary } from "@/lib/oak-income";
+import type { AssistantReply, AssistantTurn } from "@/lib/finance-assistant";
+import { localAssistantEnabled } from "./finance-page-context";
 import type { DriverDay, DriverTask } from "@/lib/oak-driver-types";
 
 export const incomeMoney = (value: number) => value.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -96,7 +98,7 @@ export function OakIncomeRules({ onChange, embedded = false }: { onChange: () =>
   </div>;
 }
 
-export function IncomeReviewDialog({ task, day, onClose, onSaved }: { task: DriverTask; day: DriverDay; onClose: () => void; onSaved: () => Promise<void> }) {
+export function IncomeReviewDialog({ task, day, startWithAssistant=false, onClose, onSaved }: { task: DriverTask; day: DriverDay; startWithAssistant?:boolean; onClose: () => void; onSaved: () => Promise<void> }) {
   const [mode, setMode] = useState(task.income?.review?.mode || "label");
   const [workLabel, setWorkLabel] = useState(task.income?.workLabel || incomeWorkLabel(task) || "");
   const [amount, setAmount] = useState(task.income?.review?.amount == null ? "" : String(task.income.review.amount));
@@ -104,6 +106,26 @@ export function IncomeReviewDialog({ task, day, onClose, onSaved }: { task: Driv
   const [note, setNote] = useState(task.income?.review?.note || ""); const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   const [anchors, setAnchors] = useState<DriverTask[]>(day.tasks.filter(candidate => candidate.id && candidate.id !== task.id && candidate.importId === task.importId && candidate.income?.status === "priced" && (candidate.income.billingBasis === "trip" || candidate.income.source === "manual")));
   const [anchorsLoading, setAnchorsLoading] = useState(false);
+  const [instruction,setInstruction] = useState("");
+  const [turns,setTurns] = useState<AssistantTurn[]>([]);
+  const [asking,setAsking] = useState(false);
+  const [assistantMessage,setAssistantMessage] = useState("");
+  async function askAssistant() {
+    if (asking || !instruction.trim() || !task.id) return;
+    const messages: AssistantTurn[] = [...turns.slice(-6), {role:"user",content:instruction.trim()}];
+    setAsking(true); setError(""); setAssistantMessage("");
+    try {
+      const reply = await json<AssistantReply>(await fetch("/api/finance-assistant", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"review",taskId:task.id,messages})}));
+      if (reply.review) {
+        const r=reply.review;
+        if (r.taskId!==task.id) throw new Error("作业已切换，请重新核对");
+        setMode(r.mode); setAmount(r.amount==null?"":String(r.amount)); setIncludedTaskId(r.includedTaskId||"");
+        setWorkLabel(r.workLabel||task.income?.workLabel||incomeWorkLabel(task)||""); if (r.note) setNote(r.note);
+      }
+      setAssistantMessage(reply.text); setInstruction(""); setTurns([...messages,{role:"assistant",content:reply.text}]);
+    } catch (e) {setError((e as Error).message);}
+    finally {setAsking(false);}
+  }
   useEffect(() => {
     if (mode !== "included") return;
     const controller = new AbortController(); setAnchorsLoading(true);
@@ -114,19 +136,25 @@ export function IncomeReviewDialog({ task, day, onClose, onSaved }: { task: Driv
     return () => controller.abort();
   }, [mode, task.id]);
   async function save(reset = false) {
+    if (asking || busy) return;
     setBusy(true); setError("");
     try {
       await json(await fetch(`/api/oak-task-income/${task.id}`, { method: reset ? "DELETE" : "PUT", headers: { "Content-Type": "application/json" }, ...(!reset ? { body: JSON.stringify({ mode, workLabel, amount, includedTaskId, note }) } : {}) }));
       await onSaved(); onClose();
     } catch (e) { setError(e instanceof Error ? e.message : "保存失败"); } finally { setBusy(false); }
   }
-  return <IncomeDialog title="核对作业收入" busy={busy} onClose={onClose}><form className="oak-income-form" onSubmit={event => { event.preventDefault(); void save(); }}><div className="oak-income-fields">
+  return <IncomeDialog title="核对作业收入" busy={busy||asking} onClose={onClose}><form className="oak-income-form" onSubmit={event => { event.preventDefault(); void save(); }}><div className="oak-income-fields">
     <div className="oak-income-task-context"><strong>{task.driverName} · {task.workDate}</strong><span>{task.reference || "无参考号"} · {task.fromLocation || "未知起点"} → {task.toLocation || "未知终点"}</span><small>{task.fileName} · {task.sheetName} · 原表第 {task.sourceRow} 行</small></div>
     {error ? <div className="error" role="alert">{error}</div> : null}
+    {localAssistantEnabled && task.id && <details open={startWithAssistant || undefined} className="oak-review-assistant"><summary><MessagesSquare size={15}/>让财务助手核对</summary>
+      <label className="field">核对要求<textarea rows={2} maxLength={1500} disabled={busy||asking} value={instruction} onChange={e=>setInstruction(e.target.value)} placeholder="这段单独计价，还是已含在某一趟收入里？"/></label>
+      <button type="button" className="button ghost" disabled={asking||busy||!instruction.trim()} onClick={()=>void askAssistant()}>{asking?"正在核对…":"生成核对建议"}</button>
+      {assistantMessage && <p role="status">{assistantMessage}</p>}
+    </details>}
     <label className="field">核对方式<select aria-label="核对方式" value={mode} onChange={e => { setError(""); setMode(e.target.value as typeof mode); }}><option value="label">确认作业名称，按收入标准计价</option><option value="manual">人工核定作业收入</option><option value="included">收入已含在另一段作业中</option></select></label>
     <label className="field">作业名称<input required={mode === "label"} maxLength={120} value={workLabel} onChange={e => setWorkLabel(e.target.value)} placeholder="如：还柜、TCY2直送" /></label>
     {mode === "manual" ? <label className="field">作业收入 / USD<input required type="number" min="0" max="9999999999.99" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} /></label> : null}
     {mode === "included" ? <label className="field">收入所属主作业<select aria-label="收入所属主作业" required disabled={anchorsLoading} value={includedTaskId} onChange={e => setIncludedTaskId(e.target.value)}><option value="">{anchorsLoading ? "正在读取整趟作业..." : "选择同批次、同司机的整趟作业"}</option>{anchors.map(anchor => <option key={anchor.id} value={anchor.id}>{anchor.workDate} · {anchor.income?.workLabel || "作业"} · {anchor.reference || `第 ${anchor.sourceRow} 行`} · {anchor.fromLocation} → {anchor.toLocation} · {incomeMoney(anchor.income!.amount!)}</option>)}</select></label> : null}
     <label className="field">核对备注（选填）<textarea maxLength={1000} rows={3} value={note} onChange={e => setNote(e.target.value)} /></label>
-  </div><footer className="oak-dialog-actions">{task.income?.review ? <button type="button" className="button ghost oak-income-reset" disabled={busy} onClick={() => { if (window.confirm("清除这段作业的收入核对，恢复按原表自动匹配？")) void save(true); }}><RotateCcw size={15} />恢复自动</button> : null}<button type="button" className="button ghost" disabled={busy} onClick={onClose}>取消</button><button type="submit" className="button primary" disabled={busy || (mode === "included" && anchorsLoading)}><Save size={15} />{busy ? "保存中..." : "保存核对"}</button></footer></form></IncomeDialog>;
+  </div><footer className="oak-dialog-actions">{task.income?.review ? <button type="button" className="button ghost oak-income-reset" disabled={busy || asking} onClick={() => { if (window.confirm("清除这段作业的收入核对，恢复按原表自动匹配？")) void save(true); }}><RotateCcw size={15} />恢复自动</button> : null}<button type="button" className="button ghost" disabled={busy || asking} onClick={onClose}>取消</button><button type="submit" className="button primary" disabled={busy || asking || (mode === "included" && anchorsLoading)}><Save size={15} />{busy ? "保存中..." : "保存核对"}</button></footer></form></IncomeDialog>;
 }

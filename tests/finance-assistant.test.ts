@@ -94,3 +94,22 @@ test('model cannot apply writes; draft tool is rejected in read mode',async()=>{
   assert.match(r.text,/尚未入账/);
   assert.deepEqual(draft.sent[0].tools.map((t:{name:string})=>t.name),['driver_profit','period_ledger','prepare_changes']);
 });
+
+test('task review only suggests fields for the selected leg and refuses unrelated anchors',async()=>{
+  const task={id:'11',sheetName:'测试',driverName:'测试',section:'海柜',sourceRow:4,workDate:'2026-09-15',reference:'Test',nature:'还柜',fromLocation:'94561',toLocation:'ETS',miles:47,notes:null,rawCells:{}};
+  const context={task,anchors:[{...task,id:'12',reference:'Main'}]};
+  const proposal={mode:'manual',workLabel:'还柜',amount:60,note:null,includedTaskId:null};
+  const run=async(p:Record<string,unknown>)=>{
+    const {deps,sent}=simulate([[call('selected_work',{})],[call('prepare_task_review',p)]]);
+    const reply=await chat(turns,false,'test-token','test-model',deps,undefined,context);
+    assert.deepEqual(sent[0].tools.map((t:{name:string})=>t.name),['selected_work','prepare_task_review']);
+    assert.equal(reply.draft,undefined);
+    return reply.review!;
+  };
+  assert.equal((await run({...proposal,taskId:'999'})).taskId,task.id);
+  assert.equal((await run(proposal)).amount,60);
+  assert.equal((await run({...proposal,mode:'included',includedTaskId:'12'})).amount,null);
+  await assert.rejects(run({...proposal,mode:'included',includedTaskId:'13'}),/主作业/);
+  await assert.rejects(run({...proposal,amount:null}),/金额/);
+  await assert.rejects(run({...proposal,mode:'label',workLabel:''}),/必填/);
+});

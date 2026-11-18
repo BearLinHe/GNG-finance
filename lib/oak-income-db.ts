@@ -34,7 +34,7 @@ export async function assertIncomeTasksEditable(client: PoolClient, taskIds: str
     where s.status='confirmed' and st.task_id=any($1::bigint[]) limit 1`, [taskIds]);
   if (locked.rowCount) throw new IncomeInputError(`作业已进入确认的周结算单 #${locked.rows[0].id}，不能修改收入或归集关系`);
 }
-function taskFromRow(row: Record<string, unknown>): DriverTask {
+export function taskFromRow(row: Record<string, unknown>): DriverTask {
   const text = (value: unknown) => value == null ? null : String(value);
   return { id: String(row.id), importId: Number(row.import_id), sheetName: String(row.sheet_name), section: String(row.section),
     payeeType: row.payee_type as PayeeType | null,
@@ -107,9 +107,13 @@ export async function saveIncomeRule(id: string | null, value: unknown) {
 export async function deleteIncomeRule(id: string) {
   await ensureSystemSchema();
   return withSystemClient(async client => {
-    const result = await client.query("delete from oak_income_rules where id=$1 returning id", [id]);
-    if (!result.rowCount) throw new IncomeInputError("收入标准不存在");
-    return { success: true };
+    await client.query("begin");
+    try {
+      await client.query("select pg_advisory_xact_lock(19431, 1)");
+      const result = await client.query("delete from oak_income_rules where id=$1 returning id", [id]);
+      if (!result.rowCount) throw new IncomeInputError("收入标准不存在");
+      await client.query("commit"); return { success: true };
+    } catch (e) { await client.query("rollback"); throw e; }
   });
 }
 
@@ -129,32 +133,37 @@ export async function saveIncomeReview(taskId: string, value: unknown) {
     await client.query("begin");
     try {
       await client.query("select pg_advisory_xact_lock(19431, 2)");
-      const taskResult = await client.query("select *, work_date::text as date_text from oak_driver_tasks where id=$1", [taskId]);
-      const task = taskResult.rows[0];
-      if (!task) throw new IncomeInputError("作业不存在，请刷新");
-      const related = await client.query("select task_id::text, included_task_id::text from oak_task_income_reviews where task_id=$1 or included_task_id=$1", [taskId]);
-      await assertIncomeTasksEditable(client, [taskId, ...(review.includedTaskId ? [review.includedTaskId] : []), ...related.rows.flatMap(row => [row.task_id, row.included_task_id].filter(Boolean))]);
-      if (review.mode === "included") {
-        const children = await client.query("select 1 from oak_task_income_reviews where included_task_id=$1 limit 1", [taskId]);
-        if (children.rowCount) throw new IncomeInputError("这段作业已有其他路段并入，不能再并入另一段");
-        const result = await client.query("select *, work_date::text as date_text from oak_driver_tasks where id=$1", [review.includedTaskId]);
-        const anchor = result.rows[0];
-        if (!anchor || String(anchor.id) === taskId || String(anchor.import_id) !== String(task.import_id) || anchor.driver_name !== task.driver_name) throw new IncomeInputError("只能并入同批次、同司机的主作业");
-        const dayResult = await client.query("select *, work_date::text as date_text from oak_driver_tasks where driver_name=$1 and work_date=$2::date", [anchor.driver_name, anchor.date_text]);
-        const dayTasks = dayResult.rows.map(taskFromRow);
-        const rules = await readIncomeRules(client); const reviews = await readIncomeReviews(client, dayTasks.map(row => row.id!));
-        const context = isDavidR002Task(taskFromRow(anchor)) ? await readIncomeContext(client, dayTasks, reviews) : { days: [], reviews: [] };
-        const income = priceDriverDays([...summarizeDriverTasks(dayTasks), ...context.days], rules, [...reviews, ...context.reviews], await readOakVehicles(client))
-          .flatMap(day => day.tasks).find(row => row.id === String(anchor.id))!.income!;
-        if (income.status !== "priced" || (income.source === "rule" && income.billingBasis !== "trip")) throw new IncomeInputError("主作业需已有整趟收入或人工核定收入，请先核对主作业");
-      }
-      await client.query(`insert into oak_task_income_reviews(task_id,mode,work_label,amount,included_task_id,note)
-        values($1,$2,$3,$4,$5,$6) on conflict(task_id) do update set mode=excluded.mode,work_label=excluded.work_label,
-        amount=excluded.amount,included_task_id=excluded.included_task_id,note=excluded.note,updated_at=now()`,
-      [taskId, review.mode, review.workLabel, review.amount, review.includedTaskId, review.note]);
+      await writeIncomeReviewLocked(client, review);
       await client.query("commit"); return { success: true };
     } catch (error) { await client.query("rollback"); throw error; }
   });
+}
+// Caller owns the transaction and the income-review lock (19431, 2).
+export async function writeIncomeReviewLocked(client: PoolClient, review: IncomeReview) {
+  const {taskId} = review;
+  const taskResult = await client.query("select *, work_date::text as date_text from oak_driver_tasks where id=$1", [taskId]);
+  const task = taskResult.rows[0];
+  if (!task) throw new IncomeInputError("作业不存在，请刷新");
+  const related = await client.query("select task_id::text, included_task_id::text from oak_task_income_reviews where task_id=$1 or included_task_id=$1", [taskId]);
+  await assertIncomeTasksEditable(client, [taskId, ...(review.includedTaskId ? [review.includedTaskId] : []), ...related.rows.flatMap(row => [row.task_id, row.included_task_id].filter(Boolean))]);
+  if (review.mode === "included") {
+    const children = await client.query("select 1 from oak_task_income_reviews where included_task_id=$1 limit 1", [taskId]);
+    if (children.rowCount) throw new IncomeInputError("这段作业已有其他路段并入，不能再并入另一段");
+    const result = await client.query("select *, work_date::text as date_text from oak_driver_tasks where id=$1", [review.includedTaskId]);
+    const anchor = result.rows[0];
+    if (!anchor || String(anchor.id) === taskId || String(anchor.import_id) !== String(task.import_id) || anchor.driver_name !== task.driver_name) throw new IncomeInputError("只能并入同批次、同司机的主作业");
+    const dayResult = await client.query("select *, work_date::text as date_text from oak_driver_tasks where driver_name=$1 and work_date=$2::date", [anchor.driver_name, anchor.date_text]);
+    const dayTasks = dayResult.rows.map(taskFromRow);
+    const rules = await readIncomeRules(client); const reviews = await readIncomeReviews(client, dayTasks.map(row => row.id!));
+    const context = isDavidR002Task(taskFromRow(anchor)) ? await readIncomeContext(client, dayTasks, reviews) : { days: [], reviews: [] };
+    const income = priceDriverDays([...summarizeDriverTasks(dayTasks), ...context.days], rules, [...reviews, ...context.reviews], await readOakVehicles(client))
+      .flatMap(day => day.tasks).find(row => row.id === String(anchor.id))!.income!;
+    if (income.status !== "priced" || (income.source === "rule" && income.billingBasis !== "trip")) throw new IncomeInputError("主作业需已有整趟收入或人工核定收入，请先核对主作业");
+  }
+  await client.query(`insert into oak_task_income_reviews(task_id,mode,work_label,amount,included_task_id,note)
+    values($1,$2,$3,$4,$5,$6) on conflict(task_id) do update set mode=excluded.mode,work_label=excluded.work_label,
+    amount=excluded.amount,included_task_id=excluded.included_task_id,note=excluded.note,updated_at=now()`,
+  [taskId, review.mode, review.workLabel, review.amount, review.includedTaskId, review.note]);
 }
 export async function deleteIncomeReview(taskId: string) {
   await ensureSystemSchema();
