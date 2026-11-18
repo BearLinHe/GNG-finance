@@ -13,10 +13,10 @@ import type { OakVehicle } from './oak-vehicles';
 import { withSystemClient } from './system-db';
 
 const getVehicles = async (client: PoolClient) => (await client.query<OakVehicle>(`select id,vehicle_number as "vehicleNumber",driver_name as "driverName",aliases,version from oak_vehicles order by id`)).rows;
-const getNames = async (client: PoolClient) => (await client.query<{ name: string }>(`select distinct driver_name as name from oak_driver_tasks
+export const getNames = async (client: PoolClient) => (await client.query<{ name: string }>(`select distinct driver_name as name from oak_driver_tasks
   union select distinct payroll_source->>'sheetName' from oak_vehicle_amounts where category='labor' and voided_at is null and payroll_source is not null
   union select distinct subject from oak_weekly_settlements where status='confirmed'`)).rows.flatMap(row => row.name ? [row.name] : []);
-async function getTimelines(client: PoolClient, vehicles: OakVehicle[]): Promise<DriverTimeline[]> {
+export async function getTimelines(client: PoolClient, vehicles: OakVehicle[]): Promise<DriverTimeline[]> {
   const exists = (await client.query<{ present: boolean }>(`select to_regclass('oak_driver_vehicle_timelines') is not null as present`)).rows[0].present;
   const timelines = exists ? (await client.query<DriverTimeline>(`select driver_key as "driverKey",version,uses from oak_driver_vehicle_timelines`)).rows : [];
   return effectiveDriverTimelines(timelines, vehicles);

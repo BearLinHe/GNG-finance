@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import {applyPreview,dropPreview,storePreview} from './finance-assistant-previews';
 import type { PoolClient } from 'pg';
 import { AssistantInputError, checkBatch, dateRange, kindLabels, prepareEdit, recheckEdit, type PreparedEdit } from './finance-assistant';
 import { withSystemClient } from './system-db';
@@ -37,9 +37,6 @@ export async function queryLedger(args:Record<string,unknown>) {
   });
 }
 
-type Draft={expires:number; edits:PreparedEdit[]; busy:boolean; result?:string[]};
-const state=globalThis as typeof globalThis & {oakAssistantDrafts?:Map<string,Draft>};
-const drafts=state.oakAssistantDrafts??=new Map<string,Draft>();
 export async function previewDraft(raw:unknown) {
   if(!Array.isArray(raw)||!raw.length||raw.length>40||raw.some(r=>!r||typeof r!=='object'||Array.isArray(r)))throw new AssistantInputError('每批可核对 1 至 40 条明细');
   const edits=await withSystemClient(async client=>{
@@ -49,42 +46,26 @@ export async function previewDraft(raw:unknown) {
     return raw.map(row=>prepareEdit(row,fleet,records));
   });
   checkBatch(edits);
-  for(const [id,d] of drafts) if(!d.busy && d.expires<=Date.now()) drafts.delete(id);
-  if(drafts.size>=128) throw new AssistantInputError('未过期草稿过多，请稍后重试');
-  const token=randomUUID();drafts.set(token,{edits,expires:Date.now()+15*60_000,busy:false});
+  const token=await storePreview('expense',edits);
   return {token,rows:edits.map(e=>e.row)};
 }
 
 export function discardDraft(token:unknown) {
-  if(typeof token!=='string')throw new AssistantInputError('草稿编号无效');
-  const d=drafts.get(token);
-  if(d?.busy||d?.result)throw new AssistantInputError('该草稿正在保存或已经入账');
-  drafts.delete(token);
+  return dropPreview('expense',token);
 }
 
 export async function confirmDraft(token:unknown) {
-  const d=typeof token==='string'?drafts.get(token):undefined;
-  if(!d||d.expires<=Date.now())throw new AssistantInputError('草稿已失效，请重新核对');
-  if(d.result)return d.result;
-  if(d.busy)throw new AssistantInputError('这批明细正在保存');
-  d.busy=true;
-  try{
-    const ids=await withSystemClient(async client=>{
-      await client.query('begin');
-      try{
+  return applyPreview<PreparedEdit[]>('expense',token,async(client,edits)=>{
         await client.query('select pg_advisory_xact_lock_shared(19431,0)');
         await client.query('select pg_advisory_xact_lock(19431,3)');
         const fleet=await vehicles(client);
-        const records=await readVehicleAmounts(client,{dateFrom:d.edits.map(e=>e.row.dateFrom).sort()[0],dateTo:d.edits.map(e=>e.row.dateTo).sort().at(-1)!});
+        const records=await readVehicleAmounts(client,{dateFrom:edits.map(e=>e.row.dateFrom).sort()[0],dateTo:edits.map(e=>e.row.dateTo).sort().at(-1)!});
         const ids:string[]=[];
-        for(const e of d.edits){
+        for(const e of edits){
           recheckEdit(e,fleet,records);
-          const written=await writeVehicleAmountLocked(client,e.input,'本地财务助手 · 人工确认');
+          const written=await writeVehicleAmountLocked(client,e.input,'财务助手 · 人工确认');
           ids.push(String(written.id));
         }
-        await client.query('commit');return ids;
-      }catch(error){await client.query('rollback');throw error;}
-    });
-    d.result=ids;return ids;
-  }finally{d.busy=false;}
+        return ids;
+  });
 }

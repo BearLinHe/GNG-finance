@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowRight, Banknote, MessagesSquare, Pencil, Plus, RotateCcw, Save, Search, Trash2, X } from "lucide-react";
 import { incomeWorkLabel, type IncomeRule, type IncomeSummary } from "@/lib/oak-income";
 import type { AssistantReply, AssistantTurn } from "@/lib/finance-assistant";
-import { localAssistantEnabled } from "./finance-page-context";
+import { useAssistantEnabled } from "./finance-page-context";
 import type { DriverDay, DriverTask } from "@/lib/oak-driver-types";
 
 export const incomeMoney = (value: number) => value.toLocaleString("en-US", { style: "currency", currency: "USD" });
@@ -99,6 +99,7 @@ export function OakIncomeRules({ onChange, embedded = false }: { onChange: () =>
 }
 
 export function IncomeReviewDialog({ task, day, startWithAssistant=false, onClose, onSaved }: { task: DriverTask; day: DriverDay; startWithAssistant?:boolean; onClose: () => void; onSaved: () => Promise<void> }) {
+  const assistantEnabled=useAssistantEnabled();
   const [mode, setMode] = useState(task.income?.review?.mode || "label");
   const [workLabel, setWorkLabel] = useState(task.income?.workLabel || incomeWorkLabel(task) || "");
   const [amount, setAmount] = useState(task.income?.review?.amount == null ? "" : String(task.income.review.amount));
@@ -146,7 +147,7 @@ export function IncomeReviewDialog({ task, day, startWithAssistant=false, onClos
   return <IncomeDialog title="核对作业收入" busy={busy||asking} onClose={onClose}><form className="oak-income-form" onSubmit={event => { event.preventDefault(); void save(); }}><div className="oak-income-fields">
     <div className="oak-income-task-context"><strong>{task.driverName} · {task.workDate}</strong><span>{task.reference || "无参考号"} · {task.fromLocation || "未知起点"} → {task.toLocation || "未知终点"}</span><small>{task.fileName} · {task.sheetName} · 原表第 {task.sourceRow} 行</small></div>
     {error ? <div className="error" role="alert">{error}</div> : null}
-    {localAssistantEnabled && task.id && <details open={startWithAssistant || undefined} className="oak-review-assistant"><summary><MessagesSquare size={15}/>让财务助手核对</summary>
+    {assistantEnabled && task.id && <details open={startWithAssistant || undefined} className="oak-review-assistant"><summary><MessagesSquare size={15}/>让财务助手核对</summary>
       <label className="field">核对要求<textarea rows={2} maxLength={1500} disabled={busy||asking} value={instruction} onChange={e=>setInstruction(e.target.value)} placeholder="这段单独计价，还是已含在某一趟收入里？"/></label>
       <button type="button" className="button ghost" disabled={asking||busy||!instruction.trim()} onClick={()=>void askAssistant()}>{asking?"正在核对…":"生成核对建议"}</button>
       {assistantMessage && <p role="status">{assistantMessage}</p>}

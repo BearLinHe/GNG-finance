@@ -187,6 +187,10 @@ async function ensureSystemSchemaOnce() {
       // Keep migration order and the transaction, without a network round trip per statement.
       const statements: string[] = [];
       const schemaQuery = (sql: string) => { statements.push(sql); };
+      schemaQuery(`create table if not exists finance_assistant_previews (
+        token uuid primary key, kind text not null, owner text not null, payload jsonb not null,
+        result jsonb, expires_at timestamptz not null default (now() + interval '15 minutes')
+      )`);
       schemaQuery(`
         create table if not exists container_bills (
           id bigserial primary key,

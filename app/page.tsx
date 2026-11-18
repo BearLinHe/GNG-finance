@@ -32,7 +32,7 @@ import OperatingStandards, { type StandardCategory } from "./operating-standards
 import OakTransportAccounting from "./oak-transport-accounting";
 import SavContainerAccounting from "./sav-container-accounting";
 import FinanceAssistantDock from './finance-assistant-dock';
-import { FinancePageContext, localAssistantEnabled, type FactSource } from './finance-page-context';
+import { FinancePageContext, useAssistantEnabled, type FactSource } from './finance-page-context';
 import type { AssistantPage } from '@/lib/finance-assistant';
 import {readWorkspaceNavigation,workspaceNavigationKey,workspaceNavigationUrl,type AccountingModule,type OakWorkspaceView} from "@/lib/workspace-navigation";
 
@@ -636,6 +636,7 @@ function DataTable<T>({
 }
 
 export default function Home() {
+  const assistantEnabled=useAssistantEnabled();
   const assistantFacts = useRef<FactSource|null>(null);
   const [legacyAssistant,setLegacyAssistant]=useState(false);
   const [activeModule, setActiveModule] = useState<AccountingModule>("external");
@@ -1360,7 +1361,7 @@ export default function Home() {
   ], []);
 
   return (
-    <FinancePageContext.Provider value={assistantFacts}><div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}${localAssistantEnabled?' with-assistant':''}`}>
+    <FinancePageContext.Provider value={assistantFacts}><div className={`app-shell ${sidebarCollapsed ? "sidebar-collapsed" : ""}${assistantEnabled?' with-assistant':''}`}>
       <aside className="sidebar">
         <div className="sidebar-brand">
           <div className="brand-mark">G</div>
@@ -2180,7 +2181,7 @@ export default function Home() {
         </>}
         </main>
       </div>
-      {navigationReady && localAssistantEnabled && <FinanceAssistantDock initialOpen={legacyAssistant} module={activeModule} title={activeModule==='external'?'OAK 单柜核算 · '+pageTitle:pageTitle} readPage={():AssistantPage=>{
+      {navigationReady && assistantEnabled && <FinanceAssistantDock initialOpen={legacyAssistant} module={activeModule} title={activeModule==='external'?'OAK 单柜核算 · '+pageTitle:pageTitle} readPage={():AssistantPage=>{
         const key=activeModule==='external'?tab:activeModule==='sav'?'sav':oakView;
         let facts:object|null=assistantFacts.current?.key===key ? assistantFacts.current.read() : null;
         if(activeModule==='external' && !loading && !error){

@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import {applyPreview,dropPreview,storePreview} from './finance-assistant-previews';
 import type { PoolClient } from 'pg';
 import { withSystemClient } from './system-db';
 import { AssistantInputError, dateRange } from './finance-assistant';
@@ -31,43 +31,22 @@ export async function findDriverWork(args:Record<string,unknown>) {
     catch(e){await client.query('rollback');throw e;}
   });
 }
-type Pending={scope:WorkScope;raw:unknown;words:string;stamp:string;expires:number;busy:boolean;ids?:string[]};
-const mem=globalThis as typeof globalThis & {oakWorkReviewDrafts?:Map<string,Pending>};
-const pending=mem.oakWorkReviewDrafts??=new Map<string,Pending>();
-export function previewWorkBatch(book:WorkBook,raw:unknown,words:string) {
+type Pending={scope:WorkScope;raw:unknown;words:string;stamp:string};
+export async function previewWorkBatch(book:WorkBook,raw:unknown,words:string,run?:typeof withSystemClient) {
   const draft=prepareWorkBatch(book,raw,words);
-  for(const [key,d] of pending)if(!d.busy&&d.expires<=Date.now())pending.delete(key);
-  if(pending.size>=128)throw new AssistantInputError('待确认批次过多，请稍后再试');
-  const token=randomUUID();
-  pending.set(token,{scope:book.scope,raw,words,stamp:draft.stamp,expires:Date.now()+900000,busy:false});
+  const token=await storePreview('work',{scope:book.scope,raw,words,stamp:draft.stamp},run);
   return {token,rows:draft.preview};
 }
-export function discardWorkBatch(token:unknown){
-  if(typeof token!=='string')throw new AssistantInputError('核对批次无效');
-  const d=pending.get(token);
-  if(d?.busy||d?.ids)throw new AssistantInputError('该批次正在保存或已保存');
-  pending.delete(token);
-}
-const persistence={withClient:withSystemClient,load,assertEditable:assertIncomeTasksEditable,write:writeIncomeReviewLocked};
-export async function confirmWorkBatch(token:unknown,db=persistence){
-  const d=typeof token==='string'?pending.get(token):undefined;
-  if(!d||d.expires<=Date.now())throw new AssistantInputError('核对预览已失效，请重新查询');
-  if(d.ids)return d.ids;
-  if(d.busy)throw new AssistantInputError('正在保存这批工单');
-  d.busy=true;
-  try{
-    const ids=await db.withClient(async client=>{
-      await client.query('begin');
-      try{
-        await client.query('select pg_advisory_xact_lock_shared(19431,0)');
-        for(const lock of [1,2,3])await client.query('select pg_advisory_xact_lock(19431,$1)',[lock]);
-        const batch=prepareWorkBatch(await db.load(client,d.scope),d.raw,d.words);
-        if(batch.stamp!==d.stamp)throw new AssistantInputError('工单、主作业或计价依据已变化，请重新生成预览。整批未保存。');
-        await db.assertEditable(client,batch.preview.map(r=>r.id));
-        for(const change of batch.changes)await db.write(client,change);
-        await client.query('commit');return batch.changes.map(c=>c.taskId);
-      }catch(e){await client.query('rollback');throw e;}
-    });
-    d.ids=ids;return ids;
-  }finally{d.busy=false;}
+export function discardWorkBatch(token:unknown,run?:typeof withSystemClient){return dropPreview('work',token,run);}
+const persistence={load,assertEditable:assertIncomeTasksEditable,write:writeIncomeReviewLocked};
+export async function confirmWorkBatch(token:unknown,db=persistence,run?:typeof withSystemClient){
+  return applyPreview<Pending>('work',token,async(client,d)=>{
+    await client.query('select pg_advisory_xact_lock_shared(19431,0)');
+    for(const lock of [1,2,3])await client.query('select pg_advisory_xact_lock(19431,$1)',[lock]);
+    const batch=prepareWorkBatch(await db.load(client,d.scope),d.raw,d.words);
+    if(batch.stamp!==d.stamp)throw new AssistantInputError('工单、主作业或计价依据已变化，请重新生成预览。整批未保存。');
+    await db.assertEditable(client,batch.preview.map(r=>r.id));
+    for(const change of batch.changes)await db.write(client,change);
+    return batch.changes.map(c=>c.taskId);
+  },run);
 }

@@ -16,7 +16,7 @@ export default function OakIncomePagination({page,pageSize,totalCount,loading,on
     const value=/^\d+$/.test(draft)?Number(draft):current,next=Math.max(1,Math.min(pages,value));
     setDraft(String(next));if(next!==current)onPageChange(next);
   }
-  return <nav className="oak-income-pagination" aria-label="车辆收入分页" aria-busy={loading}>
+  return <nav className="oak-income-pagination" aria-label="司机作业收入分页" aria-busy={loading}>
     <div className="oak-income-page-range" role="status">{loading?'读取中...':totalCount==null?'等待数据':total?<><span>显示</span> <strong>{quantity(first)}-{quantity(last)}</strong> <span>条，共</span> <strong>{quantity(total)}</strong> <span>条</span></>:<>共 <strong>0</strong> 条</>}</div>
     <div className="oak-income-page-controls">
       <label className="oak-income-page-size"><span>每页</span><span className="oak-income-page-select"><select aria-label="收入每页条数" value={pageSize} disabled={loading||totalCount==null} onChange={event=>onPageSizeChange(Number(event.target.value))}>{[100,200,300].map(size=><option key={size} value={size}>{size} 条</option>)}</select><ChevronDown size={13} aria-hidden="true"/></span></label>

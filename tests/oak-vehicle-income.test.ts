@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {buildVehicleIncomeRows,summarizeVehicleIncome,incomeMapDays} from '../lib/oak-vehicle-income';
+import {buildDriverIncomeRows,buildVehicleIncomeRows,summarizeVehicleIncome,incomeMapDays} from '../lib/oak-vehicle-income';
+import {driverDirectory,effectiveDriverTimelines} from '../lib/oak-driver-accounting';
 import {incomeActivityGaps} from '../lib/oak-income-coverage';
 import {calculateDatedVehicleAccounting,type VehicleAmount} from '../lib/oak-vehicle-amounts';
 import {oakVehicleSeeds} from '../lib/oak-vehicles';
@@ -11,6 +12,13 @@ const task=(id='1',date=range.dateFrom):DriverTask=>({id,importId:1,driverName:v
 const record=(category:VehicleAmount['category'],amount:number,dates=range):VehicleAmount=>({id:category,category,vehicleId:vehicle.id,amount,...dates,note:'confirmed',payeeType:category==='labor'?'driver':null,version:1,updatedAt:'2026-11-03',requestKey:`key-${category}`,sourceReviewId:null});
 const rule={id:1,name:'TCY1 company revenue',workLabel:'TCY1',amount:440,fromLocation:null,toLocation:null,billingBasis:'trip' as const,validFrom:null,validTo:null,active:true};
 const rated=(tasks:DriverTask[])=>priceDriverDays(summarizeDriverTasks(tasks),[rule],[]).flatMap(day=>day.tasks);
+test('driver work revenue follows the person across 2109, 77 and 3033 regardless of vehicle overrides or missing assignments',()=>{
+ const tasks=rated(['2026-08-31','2026-09-01','2026-10-20','2026-10-21'].map((d,i)=>({...task(String(i+1),d),driverName:['David Gao','David高','David Gao','刘嘉耀'][i]})));
+ const rows=buildDriverIncomeRows(oakVehicleSeeds,tasks,[record('income',9000)],{dateFrom:'2026-08-01',dateTo:'2026-10-31'},[],'asc',driverDirectory(oakVehicleSeeds,[]),effectiveDriverTimelines([],oakVehicleSeeds));
+ const david=rows.filter(r=>r.driverKey==='davidgao');
+ assert.deepEqual(david.map(r=>r.vehicleNumber),['2109','77','3033']);assert.equal(summarizeVehicleIncome(david).amount,1320);
+ assert.equal(rows.at(-1)?.vehicleNumber,null);assert.equal(rows.at(-1)?.amount,440);assert.equal(rows.length,4);
+});
 test('income is company work pricing, never the wage column or miles',()=>{
  const rows=buildVehicleIncomeRows([vehicle],rated([task()]),[],range);assert.equal(rows[0].amount,440);assert.equal(rows[0].status,'auto');assert.equal(rows[0].task?.rawCells.G3,9999);
  assert.equal(summarizeVehicleIncome(rows).amount,440);

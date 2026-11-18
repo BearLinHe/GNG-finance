@@ -5,7 +5,9 @@ import {readVehicleAmounts} from './oak-vehicle-amounts-db';
 import {vehicleRange,type VehicleRange} from './oak-vehicle-accounting';
 import {vehicleForSubject} from './oak-vehicles';
 import {readIncomeActivitySources} from './oak-payroll-activity-db';
-import {buildVehicleIncomeRows,incomeMapDays,summarizeVehicleIncome,vehicleIncomeStatuses,type VehicleIncomeResponse} from './oak-vehicle-income';
+import {buildDriverIncomeRows,buildVehicleIncomeRows,incomeMapDays,summarizeVehicleIncome,vehicleIncomeStatuses,type VehicleIncomeResponse} from './oak-vehicle-income';
+import {driverDirectory} from './oak-driver-accounting';
+import {getNames,getTimelines} from './oak-driver-accounting-db';
 
 export async function listVehicleIncome(params:URLSearchParams):Promise<VehicleIncomeResponse>{
   let range:VehicleRange|undefined;try{
@@ -29,14 +31,22 @@ export async function listVehicleIncome(params:URLSearchParams):Promise<VehicleI
       const today=new Intl.DateTimeFormat('en-CA',{timeZone:'America/Los_Angeles',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const scope=range||{dateFrom:bounds.dateFrom||today,dateTo:bounds.dateTo||today};
       const tasks=await readRatedDriverTasks(client,scope,vehicles),amounts=await readVehicleAmounts(client,scope);
       const sources=await readIncomeActivitySources(client,vehicles);
-      let rows=buildVehicleIncomeRows(vehicles,tasks,amounts,scope,sources,dateOrder).filter(row=>!vehicleId||row.vehicleId===vehicleId);
+      const directory=params.get('scope')==='driver'?driverDirectory(vehicles,await getNames(client)):null;
+      const key=params.get('driverKey')||'';
+      if(key&&!directory?.drivers.some(d=>d.key===key))throw new IncomeInputError('未找到该司机');
+      let rows=directory?buildDriverIncomeRows(vehicles,tasks,amounts,scope,sources,dateOrder,directory,await getTimelines(client,vehicles)).filter(r=>!key||r.driverKey===key)
+        :buildVehicleIncomeRows(vehicles,tasks,amounts,scope,sources,dateOrder).filter(row=>!vehicleId||row.vehicleId===vehicleId);
       const search=(params.get('search')||'').trim().toLocaleLowerCase();
       if(search)rows=rows.filter(row=>[row.driverName,row.vehicleNumber,row.label,row.reference,row.fromLocation,row.toLocation,row.basis,row.task?.fileName].join(' ').toLocaleLowerCase().includes(search));
       const summary=summarizeVehicleIncome(rows);
       if(status!=='all')rows=rows.filter(row=>row.status===status);
       const totalCount=rows.length,currentPage=Math.min(page,Math.max(1,Math.ceil(totalCount/pageSize)));
       const result:VehicleIncomeResponse={vehicles,range:scope,rows:rows.slice((currentPage-1)*pageSize,currentPage*pageSize),totalCount,page:currentPage,pageSize,summary};
-      if(params.get('days')==='1'){
+      if(directory)result.drivers=directory.drivers;
+      if(params.get('days')==='1'&&directory){
+        if(!key||!range||Date.parse(range.dateTo)-Date.parse(range.dateFrom)>30*86400000)throw new IncomeInputError('地图请选择一位司机及最多 31 天');
+        result.days=incomeMapDays(tasks.filter(t=>directory.keyFor(t.driverName)===key),{driverName:directory.drivers.find(d=>d.key===key)!.name});
+      }else if(params.get('days')==='1'){
         if(!vehicleId||!range||Date.parse(range.dateTo)-Date.parse(range.dateFrom)>30*86400000)throw new IncomeInputError('地图请选择一辆车及最多 31 天');
         result.days=incomeMapDays(tasks.filter(task=>vehicleForSubject(vehicles,task.driverName)?.id===vehicleId),vehicles.find(vehicle=>vehicle.id===vehicleId)!);
       }

@@ -1,0 +1,22 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {assistantAccess,assistantMode,issueAssistantSession,sessionCookie} from '../lib/finance-assistant-access';
+test('hosted assistant requires an explicit production secret, HTTPS and a signed session on the same origin',()=>{
+ const code='test-only'.repeat(5),host='finance.example',origin='https://'+host;
+ const env={NODE_ENV:'production',VERCEL_ENV:'production',FINANCE_ASSISTANT_ACCESS_CODE:code};
+ assert.equal(assistantMode({...env,VERCEL_ENV:'preview'}),'off');
+ assert.equal(assistantMode({...env,FINANCE_ASSISTANT_ACCESS_CODE:''}),'off');
+ const make=(token='',o=origin,h=host,url=origin)=>new Request(url,{method:'POST',headers:{origin:o,host:h,'content-type':'application/json',cookie:sessionCookie+'='+token}});
+ const token=issueAssistantSession(code,host);
+ assert.equal(assistantAccess(make(),env),'locked');
+ assert.equal(assistantAccess(make(token),env),'allowed');
+ assert.equal(assistantAccess(make(token+'.'),env),'locked');
+ assert.equal(assistantAccess(make(token,'https://another.example'),env),'denied');
+ assert.equal(assistantAccess(make(token,origin,host,'http://'+host),env),'denied');
+ const proxied=make(token,origin,host,'http://internal:3000');
+ proxied.headers.set('x-forwarded-proto','https');
+ assert.equal(assistantAccess(proxied,env),'denied');
+ assert.equal(assistantAccess(proxied,{...env,VERCEL:'1'}),'allowed');
+ assert.equal(assistantAccess(make(token),{...env,FINANCE_ASSISTANT_ACCESS_CODE:code+'2'}),'locked');
+ assert.equal(assistantAccess(make(token,'https://new.example','new.example','https://new.example'),env),'locked');
+});

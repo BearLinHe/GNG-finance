@@ -4,6 +4,7 @@ import type {PoolClient} from 'pg';
 import {prepareWorkBatch, workLookupResult, type WorkBook} from '../lib/finance-work-review';
 import {previewWorkBatch,confirmWorkBatch,discardWorkBatch} from '../lib/finance-work-review-db';
 import {chat} from '../lib/finance-assistant-agent';
+import {withPreviewSession} from '../lib/finance-assistant-previews';
 
 const scope={driver:'刘嘉耀',date:'2026-09-15'};
 const task={id:'11',importId:9,driverName:scope.driver,workDate:scope.date,sheetName:scope.driver,section:'海柜',sourceRow:10,
@@ -43,33 +44,45 @@ test('ambiguous returns require an identifying reference; candidates must belong
 function fixture(){
   let current=structuredClone(book),failAt='',staged:string[]=[],saved:string[]=[],writes=0;
   const commands:string[]=[];
-  const client={query:async(sql:string)=>{commands.push(sql);if(sql==='begin')staged=[];if(sql==='commit')saved.push(...staged);}} as unknown as PoolClient;
+  const drafts=new Map<string,{kind:string;owner:string;payload:unknown;result:string[]|null}>();
+  const client={query:async(sql:string,args:string[]=[])=>{
+    commands.push(sql);
+    if(sql==='begin')staged=[];if(sql==='commit')saved.push(...staged);
+    const [token,kind,owner,raw]=args,d=drafts.get(token);
+    if(sql.startsWith('insert into finance_assistant_previews'))drafts.set(token,{kind,owner,payload:JSON.parse(raw),result:null});
+    if(sql.startsWith('select payload,result'))return {rows:d&&d.kind===kind&&d.owner===owner?[d]:[]};
+    if(sql.startsWith('update finance_assistant_previews')&&d)d.result=JSON.parse(kind);
+    if(sql.startsWith('delete from finance_assistant_previews where token')&&d?.owner===owner)drafts.delete(token);
+    return {rows:[],rowCount:1};
+  }} as unknown as PoolClient;
+  const run=async<T>(fn:(c:PoolClient)=>Promise<T>)=>fn(client);
   const db:NonNullable<Parameters<typeof confirmWorkBatch>[1]>={
-    withClient:async fn=>fn(client),load:async()=>current,assertEditable:async()=>{},write:async(_,r)=>{writes++;if(r.taskId===failAt)throw Error('结算锁定');staged.push(r.taskId);}
+    load:async()=>current,assertEditable:async()=>{},write:async(_,r)=>{writes++;if(r.taskId===failAt)throw Error('结算锁定');staged.push(r.taskId);}
   };
-  return {db,commands,get saved(){return saved;},get writes(){return writes;},stale(){current.tasks[0].reference='Changed';},block(id:string){failAt=id;}};
+  return {db,run,commands,get saved(){return saved;},get writes(){return writes;},stale(){current.tasks[0].reference='Changed';},block(id:string){failAt=id;}};
 }
 test('confirmation rechecks the preview, rolls back the whole set, and is idempotent after success',async()=>{
-  const {token}=previewWorkBatch(book,[included,main],words),f=fixture();
-  f.block('12');await assert.rejects(confirmWorkBatch(token,f.db),/结算锁定/);
+  const f=fixture(),{token}=await previewWorkBatch(book,[included,main],words,f.run);
+  await assert.rejects(withPreviewSession('other',()=>confirmWorkBatch(token,f.db,f.run)),/失效/);
+  f.block('12');await assert.rejects(confirmWorkBatch(token,f.db,f.run),/结算锁定/);
   assert.equal(f.commands.at(-1),'rollback');assert.deepEqual(f.saved,[]);
-  f.block('');assert.deepEqual(await confirmWorkBatch(token,f.db),['11','12']);
-  const count=f.writes;await confirmWorkBatch(token,f.db);assert.equal(f.writes,count);assert.deepEqual(f.saved,['11','12']);
-  const stale=previewWorkBatch(book,[main],words);
-  f.stale();await assert.rejects(confirmWorkBatch(stale.token,f.db),/已变化/);assert.equal(f.writes,count);
-  discardWorkBatch(stale.token);await assert.rejects(confirmWorkBatch(stale.token,f.db),/失效/);
+  f.block('');assert.deepEqual(await confirmWorkBatch(token,f.db,f.run),['11','12']);
+  const count=f.writes;await confirmWorkBatch(token,f.db,f.run);assert.equal(f.writes,count);assert.deepEqual(f.saved,['11','12']);
+  const stale=await previewWorkBatch(book,[main],words,f.run);
+  f.stale();await assert.rejects(confirmWorkBatch(stale.token,f.db,f.run),/已变化/);assert.equal(f.writes,count);
+  await discardWorkBatch(stale.token,f.run);await assert.rejects(confirmWorkBatch(stale.token,f.db,f.run),/失效/);
 });
 test('global conversation can find and preview a batch without selecting a row or enabling expense edits',async()=>{
   const calls=[['find_driver_work',scope],['preview_work_reviews',{rows:[main,included]}]] as const;
-  let step=0;
+  let step=0;const f=fixture();
   const deps:NonNullable<Parameters<typeof chat>[4]>={
     fetcher:async(_,request)=>{
       const sent=JSON.parse(String(request!.body)),names=sent.tools.map((t:{name:string})=>t.name);
       assert.ok(!names.includes('prepare_changes')&&!names.includes('confirm-work'));
       if(step===1)assert.equal(JSON.parse(sent.input.at(-1).output).work[0].reference,task.reference);
       const [name,args]=calls[step++];return Response.json({status:'completed',output:[{type:'function_call',name,call_id:'c'+step,arguments:JSON.stringify(args)}]});
-    },findWork:async()=>book,ledger:async()=>{throw Error('unexpected');},driver:async()=>{throw Error('unexpected');},preview:async()=>{throw Error('unexpected');}
+    },workPreview:(b,r,w)=>previewWorkBatch(b,r,w,f.run),findWork:async()=>book,ledger:async()=>{throw Error('unexpected');},driver:async()=>{throw Error('unexpected');},preview:async()=>{throw Error('unexpected');}
   };
   const r=await chat([{role:'user',content:words}],false,'unused','model',deps,{module:'sav',title:'SAV',facts:'{}'},undefined,true);
-  assert.ok(r.workDraft);assert.equal(r.workDraft.rows.length,2);discardWorkBatch(r.workDraft.token);
+  assert.ok(r.workDraft);assert.equal(r.workDraft.rows.length,2);await discardWorkBatch(r.workDraft.token,f.run);
 });

@@ -331,7 +331,7 @@ export default function OakTransportAccounting({initialView='vehicles',onViewCha
           <button role="tab" aria-selected={primaryView === "labor"} className={primaryView === "labor" ? "active" : ""} onClick={() => openWorkspace("labor")}><Wallet size={16} />司机工资</button>
           <button role="tab" aria-selected={primaryView === "insurance"} className={primaryView === "insurance" ? "active" : ""} onClick={() => openWorkspace("insurance")}><ShieldCheck size={16} />车辆保险</button>
           <button role="tab" aria-selected={primaryView === "fuel"} className={primaryView === "fuel" ? "active" : ""} onClick={() => openWorkspace("fuel")}><Fuel size={16} />油费</button>
-          <button role="tab" aria-selected={primaryView === "income"} className={primaryView === "income" ? "active" : ""} onClick={() => openWorkspace("income")}><Banknote size={16} />车辆收入</button>
+          <button role="tab" aria-selected={primaryView === "income"} className={primaryView === "income" ? "active" : ""} onClick={() => openWorkspace("income")}><Banknote size={16} />司机作业收入</button>
         </div>
         <details className="oak-source-menu" ref={sourceMenu}><summary className="icon-button" title="数据来源与计价设置" aria-label="数据来源与计价设置"><Settings2 size={16} /></summary><div className="oak-source-options">
           <button onClick={() => openWorkspace("activities")}><List size={15} />作业明细</button>

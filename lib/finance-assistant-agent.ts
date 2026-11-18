@@ -73,7 +73,7 @@ export async function chat(turns:AssistantTurn[],write:boolean,apiKey:string,mod
       if(call.name==='preview_work_reviews' && globalWork && !review){
         if(!work)throw new AssistantInputError('请先按司机和日期查找工单，再生成预览');
         const words=turns.filter(t=>t.role==='user').map(t=>t.content).join('\n');
-        const workDraft=(deps.workPreview??previewWorkBatch)(work,args.rows,words);
+        const workDraft=await (deps.workPreview??previewWorkBatch)(work,args.rows,words);
         return {text:`${work.scope.driver} · ${work.scope.date}：以下是作业收入变更，尚未保存。`,workDraft,evidence};
       }
       if (review && call.name==='prepare_task_review') {

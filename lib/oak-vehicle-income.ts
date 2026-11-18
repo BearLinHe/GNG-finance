@@ -3,15 +3,16 @@ import {summarizeDriverTasks,driverTaskLabel,type DriverTask,type DriverDay} fro
 import {allocateVehicleAmount,type VehicleAmount} from './oak-vehicle-amounts';
 import type {VehicleRange} from './oak-vehicle-accounting';
 import {incomeActivityGaps,type IncomeActivitySource} from './oak-income-coverage';
+import {driverDirectory,type DriverTimeline,type DriverChoice} from './oak-driver-accounting';
 
 export const vehicleIncomeStatuses=['auto','reviewed','pending','included','replaced','manual','unlinked'] as const;
 export type VehicleIncomeStatus=typeof vehicleIncomeStatuses[number];
 export type VehicleIncomeDateOrder='asc'|'desc';
 export const vehicleIncomeStatusLabels:Record<VehicleIncomeStatus,string>={auto:'自动计价',reviewed:'人工核定',pending:'待审核',included:'已含整趟',replaced:'周期收入覆盖',manual:'周期核定',unlinked:'未关联车辆'};
-export type VehicleIncomeRow={id:string;vehicleId:string|null;driverName:string;vehicleNumber:string|null;dateFrom:string;dateTo:string;
+export type VehicleIncomeRow={id:string;vehicleId:string|null;driverKey?:string|null;driverName:string;vehicleNumber:string|null;dateFrom:string;dateTo:string;
   label:string;reference:string;fromLocation:string|null;toLocation:string|null;amount:number|null;originalAmount:number|null;
   status:VehicleIncomeStatus;basis:string;task?:DriverTask;day?:DriverDay;record?:VehicleAmount;activityGap?:boolean;payrollPeriod?:VehicleRange};
-export type VehicleIncomeResponse={vehicles:OakVehicle[];rows:VehicleIncomeRow[];totalCount:number;page:number;pageSize:number;range:VehicleRange;
+export type VehicleIncomeResponse={vehicles:OakVehicle[];drivers?:DriverChoice[];rows:VehicleIncomeRow[];totalCount:number;page:number;pageSize:number;range:VehicleRange;
   summary:{knownAmount:number;amount:number|null;pendingCount:number;includedCount:number;replacedCount:number;taskCount:number;manualCount:number};
   days?:DriverDay[]};
 export function buildVehicleIncomeRows(vehicles:OakVehicle[],tasks:DriverTask[],records:VehicleAmount[],range:VehicleRange,sources?:IncomeActivitySource[],dateOrder:VehicleIncomeDateOrder='asc'):VehicleIncomeRow[]{
@@ -45,13 +46,31 @@ export function buildVehicleIncomeRows(vehicles:OakVehicle[],tasks:DriverTask[],
   return rows.sort((a,b)=>(dateOrder==='asc'?1:-1)*a.dateFrom.localeCompare(b.dateFrom)
     ||a.driverName.localeCompare(b.driverName,'zh-CN')||a.id.localeCompare(b.id,undefined,{numeric:true}));
 }
+export function buildDriverIncomeRows(vehicles:OakVehicle[],tasks:DriverTask[],records:VehicleAmount[],range:VehicleRange,sources:IncomeActivitySource[],dateOrder:VehicleIncomeDateOrder,directory:ReturnType<typeof driverDirectory>,timelines:DriverTimeline[]){
+  const wages=records.filter(r=>r.category==='labor');
+  const wageNames=new Map(wages.map(r=>['gap-'+r.id,r.payroll?.sheetName]));
+  const profiles=new Map(directory.drivers.map(d=>[d.key,d.name]));
+  const fleet=new Map(vehicles.map(v=>[v.id,v]));
+  return buildVehicleIncomeRows(vehicles,tasks,wages,range,sources,dateOrder).map(row=>{
+    const source=row.task?.driverName??wageNames.get(row.id)??'';
+    const key=directory.keyFor(source),name=key&&profiles.get(key)||source;
+    const uses=timelines.find(t=>t.driverKey===key)?.uses.filter(u=>(!u.dateFrom||u.dateFrom<=row.dateFrom)&&(!u.dateTo||u.dateTo>=row.dateTo));
+    const vehicle=uses?.length===1?fleet.get(uses[0].vehicleId):undefined;
+    const identity={driverName:name,driverKey:key,vehicleId:vehicle?.id??null,vehicleNumber:vehicle?.vehicleNumber??null};
+    if(!row.task)return {...row,...identity};
+    const income=row.task.income;
+    const status:VehicleIncomeStatus=!key?'unlinked':income?.status==='priced'?income.source==='manual'?'reviewed':'auto':income?.status==='included'?'included':'pending';
+    return {...row,...identity,status,amount:status==='included'?0:status==='auto'||status==='reviewed'?income!.amount:null,
+      basis:!key?'原表未明确司机，不能按车号推断收入归属':income?.basis||'作业收入待核对'};
+  });
+}
 export function summarizeVehicleIncome(rows:VehicleIncomeRow[]):VehicleIncomeResponse['summary']{
   const pendingCount=rows.filter(row=>row.status==='pending'||row.status==='unlinked').length;
   const knownAmount=rows.reduce((sum,row)=>sum+Math.round((row.amount??0)*100),0)/100;
   return{knownAmount,amount:pendingCount||!rows.length?null:knownAmount,pendingCount,includedCount:rows.filter(row=>row.status==='included').length,
     replacedCount:rows.filter(row=>row.status==='replaced').length,taskCount:rows.filter(row=>row.task).length,manualCount:rows.filter(row=>row.record).length};
 }
-export function incomeMapDays(tasks:DriverTask[],vehicle:OakVehicle):DriverDay[]{
+export function incomeMapDays(tasks:DriverTask[],vehicle:Pick<OakVehicle,'driverName'>):DriverDay[]{
   const groups=new Map<string,DriverTask[]>();
   for(const task of tasks)groups.set(task.workDate,[...(groups.get(task.workDate)||[]),task]);
   return [...groups].sort(([a],[b])=>a.localeCompare(b)).map(([workDate,tasks])=>({workDate,driverName:vehicle.driverName,tasks,taskCount:tasks.length,
