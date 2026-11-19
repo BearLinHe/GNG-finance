@@ -10,10 +10,9 @@ const path='/api/finance-assistant';
 const examples=['比较 David Gao 在 2026 年 8 月和 9 月的工资、油费和盈亏，列出待核对项。','总结 2026 年 9 月完整账期的车队油费和保险，给出分项合计。'];
 const usd=(v:number)=>v.toLocaleString('en-US',{style:'currency',currency:'USD'});
 const names={fuel:'油费', insurance:'保险', other:'其他费用'};
-class Locked extends Error {}
 async function post<T,>(body:unknown):Promise<T>{
   const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  const data=await response.json();if(response.status===401)throw new Locked(data.error);if(!response.ok)throw new Error(data.error||'请求失败');return data;
+  const data=await response.json();if(!response.ok)throw new Error(data.error||'请求失败');return data;
 }
 
 async function sheetText(file:File){
@@ -46,16 +45,9 @@ export default function FinanceAssistant({module,readPage}:{module:AssistantPage
   const transport=module==='oak-transport';
   const [mode,setMode]=useState<'read'|'draft'>('read'),[ready,setReady]=useState<boolean|null>(null);
   const [messages,setMessages]=useState<Message[]>([]),[prompt,setPrompt]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
-  const [locked,setLocked]=useState(false),[accessCode,setAccessCode]=useState('');
   const [attachment,setAttachment]=useState('');const fileInput=useRef<HTMLInputElement>(null),end=useRef<HTMLDivElement>(null);
-  useEffect(()=>{const controller=new AbortController();fetch(path,{signal:controller.signal}).then(async r=>{const d=await r.json();if(r.status===401){setLocked(true);return;}if(!r.ok)throw new Error(d.error);setReady(d.configured);}).catch(e=>{if(!controller.signal.aborted){setReady(false);setError(e.message);}});return ()=>controller.abort();},[]);
-  function report(e:unknown){if(e instanceof Locked)setLocked(true);setError((e as Error).message);}
-  async function unlock(){
-    if(busy)return;setBusy(true);setError('');
-    try{const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Assistant-Unlock':'1',Authorization:'Bearer '+accessCode},body:'{}'}),d=await r.json();
-      if(!r.ok)throw new Error(d.error||'解锁失败');setAccessCode('');setReady(d.configured);setLocked(false);
-    }catch(e){report(e);}finally{setBusy(false);}
-  }
+  useEffect(()=>{const controller=new AbortController();fetch(path,{signal:controller.signal,cache:'no-store'}).then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setReady(d.configured);}).catch(e=>{if(!controller.signal.aborted){setReady(false);setError(e.message);}});return ()=>controller.abort();},[]);
+  function report(e:unknown){setError(e instanceof Error?e.message:'请求失败');}
   useEffect(()=>{const history=end.current?.parentElement;if(history)history.scrollTop=history.scrollHeight;},[messages.length]);
   useEffect(()=>setMode('read'),[module]);
   async function send(sample=false){
@@ -84,10 +76,6 @@ export default function FinanceAssistant({module,readPage}:{module:AssistantPage
       setMessages(ms=>ms.map((m,n)=>i===n?{...m,saved:result.ids,content:reply?.workDraft?`已保存 ${result.ids.length} 段工单收入核对。`:`已确认入账，明细编号：${result.ids.join('、')}`}:m));}
     catch(e){report(e);}finally{setBusy(false);}
   }
-  if(locked)return <form className={styles.unlock} onSubmit={e=>{e.preventDefault();void unlock();}}>
-    <label className="field">助手访问码<input type="password" autoComplete="current-password" value={accessCode} maxLength={256} required onChange={e=>setAccessCode(e.target.value)}/></label>
-    {error&&<p role="alert">{error}</p>}<button type="submit" disabled={busy||!accessCode} className="button primary">{busy?'验证中…':'解锁财务助手'}</button>
-  </form>;
   return <section className={styles.workspace} aria-label="财务助手">
     {ready===false&&<p className={styles.notice}>未连接 AI。请检查服务端 OPENAI_API_KEY。</p>}
     <div className={styles.history} aria-live="polite">

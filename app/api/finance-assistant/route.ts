@@ -1,6 +1,6 @@
 import {NextResponse} from 'next/server';
 import { AssistantInputError, validateAssistantPage } from '@/lib/finance-assistant';
-import {assistantAccess,issueAssistantSession,sameSecret,sessionCookie,sessionSeconds} from '@/lib/finance-assistant-access';
+import {assistantAccess,assistantVisitor,sessionSeconds} from '@/lib/finance-assistant-access';
 import { chat, validTurns } from '@/lib/finance-assistant-agent';
 import { confirmDraft, discardDraft, queryDriver } from '@/lib/finance-assistant-db';
 import { IncomeInputError, incomeId } from '@/lib/oak-income-db';
@@ -11,28 +11,18 @@ import {withPreviewSession} from '@/lib/finance-assistant-previews';
 export const dynamic='force-dynamic';
 const respond=(data:unknown,status=200)=>NextResponse.json(data,{status,headers:{'Cache-Control':'no-store'}});
 const forbidden=()=>respond({error:'此环境或请求来源未启用财务助手'},403);
-const locked=()=>respond({locked:true,error:'请先在左下角财务助手输入访问码'},401);
-export function GET(r:Request){
-  const access=assistantAccess(r,process.env);
-  return access==='denied'?forbidden():access==='locked'?locked():respond({configured:!!process.env.OPENAI_API_KEY});
-}
-let running=0;
-export async function POST(r:Request){
+async function withVisitor(r:Request,handler:()=>NextResponse|Promise<NextResponse>){
   const access=assistantAccess(r,process.env);
   if(access==='denied')return forbidden();
-  if(r.headers.get('x-assistant-unlock')==='1'){
-    const code=process.env.FINANCE_ASSISTANT_ACCESS_CODE;
-    const auth=r.headers.get('authorization');
-    if(!code||!auth?.startsWith('Bearer ')||!sameSecret(auth.slice(7),code))return respond({locked:true,error:'访问码不正确'},401);
-    const response=respond({configured:!!process.env.OPENAI_API_KEY});
-    response.cookies.set(sessionCookie,issueAssistantSession(code,r.headers.get('host')!),{httpOnly:true,secure:true,sameSite:'strict',path:'/',maxAge:sessionSeconds});
-    return response;
-  }
-  if(access!=='allowed')return locked();
-  const session=r.headers.get('cookie')?.split(/;\s*/).find(x=>x.startsWith(sessionCookie+'='))??'local';
-  return withPreviewSession(session,()=>handleAuthorized(r));
+  const visitor=assistantVisitor(r,access);
+  const response=await withPreviewSession(visitor.name+'='+visitor.value,handler);
+  if(visitor.isNew)response.cookies.set(visitor.name,visitor.value,{httpOnly:true,secure:access==='hosted',sameSite:'strict',path:'/',maxAge:sessionSeconds});
+  return response;
 }
-async function handleAuthorized(r:Request){
+export function GET(r:Request){return withVisitor(r,()=>respond({configured:!!process.env.OPENAI_API_KEY}));}
+export function POST(r:Request){return withVisitor(r,()=>handleRequest(r));}
+let running=0;
+async function handleRequest(r:Request){
   if(running>=3)return respond({error:'助手正在处理其他请求，请稍后再试'},429);
   running++;
   try{

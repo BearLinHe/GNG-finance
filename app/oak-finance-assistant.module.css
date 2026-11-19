@@ -47,6 +47,3 @@
   .panelHead,.composer { padding-block:5px; }
   .composer textarea { height:44px; min-height:44px; }
 }
-.unlock { display:grid; align-content:start; gap:14px; padding:20px; }
-.unlock button { justify-self:start; }
-.unlock p { color:#a72b24; }
