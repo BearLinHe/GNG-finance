@@ -16,6 +16,33 @@ const loop = [leg(12, "94587", "95014"), leg(13, "95014", "95014"), leg(14, "950
 const rate = (tasks: DriverTask[], reviews: IncomeReview[] = []) =>
   priceDriverDays(summarizeDriverTasks(tasks), [], reviews).flatMap(day => day.tasks);
 
+function liLeg(row: number, from: string, to: string, extra: Partial<DriverTask> = {}) {
+  return leg(row, from, to, { driverName: "李屈", sheetName: "李屈", workDate: "2026-10-14", reference: null, ...extra });
+}
+
+test("Li R003: start date inclusive, each complete loop once, SFO transfers excluded", () => {
+  const tasks = [liLeg(1,"SFO","94587"),liLeg(2,"94587","95035"),liLeg(3,"95035","94040"),liLeg(4,"94040","94587"),
+    liLeg(5,"94587","94804",{reference:"r003"}),liLeg(6,"94804","94589",{nature:"R003"}),liLeg(7,"94589","94587"),
+    liLeg(8,"94587","SFO"),liLeg(9,"SFO","94587"),liLeg(10,"94587","95035")];
+  const rated = rate(tasks);
+  assert.deepEqual(rated.map(t=>t.income?.amount),[null,900,0,0,900,0,0,null,null,null]);
+  assert.deepEqual(rated.slice(1,7).map(t=>t.income?.workLabel),Array(6).fill("R003"));
+  assert.deepEqual(rated.slice(1,7).map(t=>t.income?.includedTaskId),[null,"2","2",null,"5","5"]);
+  assert.ok(rate(tasks.map(t=>({...t,workDate:"2026-10-13"}))).every(t=>t.income?.amount==null));
+});
+
+test("Li R003 does not infer trips across unrelated jobs, broken routes or other drivers' sheets", () => {
+  const first = liLeg(2,"94587","95035"), last = liLeg(3,"95035","94587");
+  for(const fields of [{reference:"R002"},{reference:"空车"},{nature:"PU+DEL"},{toLocation:"SFO"},
+    {fromLocation:"94040"},{sourceRow:4},{sheetName:"另一张表"},{driverName:"David Gao"}]){
+    assert.ok(rate([first,{...last,...fields}]).every(t=>t.income?.amount==null));
+  }
+  const both = rate([first,last,...loop.map(t=>({...t,workDate:first.workDate,importId:2}))]);
+  assert.deepEqual(both.filter(t=>t.income?.amount===900).map(t=>t.income?.workLabel).sort(),["R002","R003"]);
+  assert.deepEqual(rate([first,last],[{taskId:"2",mode:"manual",workLabel:null,amount:850,note:"",includedTaskId:null}])
+    .map(t=>t.income?.amount),[850,0]);
+});
+
 test("each return to 94587 closes one David R002 trip, including same-ZIP intermediate legs", () => {
   const input = [leg(11, "SFO", "94587", { reference: "空车" }), ...loop,
     leg(15, "94587", "94589"), leg(16, "94589", "94804"), leg(17, "94804", "94587"),

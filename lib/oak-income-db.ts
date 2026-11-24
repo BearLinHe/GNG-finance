@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { ensureSystemSchema, withSystemClient } from "./system-db";
-import { incomeAmount, incomeText, isDavidR002Task, priceDriverDays, rulesOverlap, validateIncomeRule, type IncomeReview, type IncomeRule } from "./oak-income";
+import { fixedRoundTripCode, incomeAmount, incomeText, priceDriverDays, rulesOverlap, validateIncomeRule, type IncomeReview, type IncomeRule } from "./oak-income";
 import { summarizeDriverTasks, type DriverTask } from "./oak-driver-types";
 import type { PayeeType } from "./oak-payee";
 import { readOakVehicles } from "./oak-vehicles-db";
@@ -45,8 +45,8 @@ export async function readIncomeContext(client: PoolClient, selected: DriverTask
   const ids = selected.map(task => task.id!);
   const loaded = new Set(ids);
   const missing = [...new Set(reviews.map(review => review.includedTaskId).filter((id): id is string => Boolean(id) && !loaded.has(id!)))];
-  const davids = selected.filter(isDavidR002Task).map(task => task.id!);
-  if (!missing.length && !davids.length) return { days: [], reviews: [] };
+  const tripTaskIds = selected.filter(fixedRoundTripCode).map(task => task.id!);
+  if (!missing.length && !tripTaskIds.length) return { days: [], reviews: [] };
   // A date filter can cut through a trip. Load the rest of its source sheet for pricing only.
   const result = await client.query(`with trip_sheets as (
       select distinct import_id,sheet_name,section,driver_name from oak_driver_tasks where id=any($3::bigint[])
@@ -54,7 +54,7 @@ export async function readIncomeContext(client: PoolClient, selected: DriverTask
     select t.*, t.work_date::text as date_text from oak_driver_tasks t
     where (exists(select 1 from oak_driver_tasks a where a.id=any($1::bigint[]) and t.import_id=a.import_id and t.driver_name=a.driver_name and t.work_date=a.work_date)
       or exists(select 1 from trip_sheets s where (t.import_id,t.sheet_name,t.section,t.driver_name)=(s.import_id,s.sheet_name,s.section,s.driver_name)))
-      and not(t.id=any($2::bigint[])) order by t.id`, [missing, ids, davids]);
+      and not(t.id=any($2::bigint[])) order by t.id`, [missing, ids, tripTaskIds]);
   const tasks = result.rows.map(taskFromRow);
   return { days: summarizeDriverTasks(tasks), reviews: await readIncomeReviews(client, tasks.map(task => task.id!)) };
 }
@@ -155,7 +155,7 @@ export async function writeIncomeReviewLocked(client: PoolClient, review: Income
     const dayResult = await client.query("select *, work_date::text as date_text from oak_driver_tasks where driver_name=$1 and work_date=$2::date", [anchor.driver_name, anchor.date_text]);
     const dayTasks = dayResult.rows.map(taskFromRow);
     const rules = await readIncomeRules(client); const reviews = await readIncomeReviews(client, dayTasks.map(row => row.id!));
-    const context = isDavidR002Task(taskFromRow(anchor)) ? await readIncomeContext(client, dayTasks, reviews) : { days: [], reviews: [] };
+    const context = fixedRoundTripCode(taskFromRow(anchor)) ? await readIncomeContext(client, dayTasks, reviews) : { days: [], reviews: [] };
     const income = priceDriverDays([...summarizeDriverTasks(dayTasks), ...context.days], rules, [...reviews, ...context.reviews], await readOakVehicles(client))
       .flatMap(day => day.tasks).find(row => row.id === String(anchor.id))!.income!;
     if (income.status !== "priced" || (income.source === "rule" && income.billingBasis !== "trip")) throw new IncomeInputError("主作业需已有整趟收入或人工核定收入，请先核对主作业");

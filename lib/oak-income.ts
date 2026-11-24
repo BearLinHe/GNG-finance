@@ -79,49 +79,61 @@ export function summarizeIncome(tasks: DriverTask[]): IncomeSummary {
 
 type RatedTask = DriverTask & { income: TaskIncome };
 
-const davidBase = "94587";
-const davidTripAmount = 900;
-export function isDavidR002Task(task: DriverTask) {
-  return normalizeIncomeText(task.reference) === "R002" && ["davidgao", "david高"].includes(vehicleSubjectKey(task.driverName));
+const tripBase = "94587";
+const roundTripAmount = 900;
+export function fixedRoundTripCode(task: DriverTask): "R002" | "R003" | null {
+  const reference = normalizeIncomeText(task.reference);
+  const driver = vehicleSubjectKey(task.driverName);
+  if (reference === "R002" && (driver === "davidgao" || driver === "david高")) return "R002";
+  if (driver !== "李屈" || task.workDate < "2026-10-14") return null;
+  const from = normalizeIncomeText(task.fromLocation), to = normalizeIncomeText(task.toLocation);
+  if (!from || !to || from === "SFO" || to === "SFO") return null;
+  const label = normalizeIncomeText(incomeWorkLabel(task));
+  if (reference === "R003" || (!reference && label === "R003")) return "R003";
+  // Li's original sheets omit the route code. Only infer unlabeled ZIP-to-ZIP legs.
+  return !reference && !label && /^\d{5}$/.test(from) && /^\d{5}$/.test(to) ? "R003" : null;
 }
 
-function priceDavidR002Trips(tasks: RatedTask[], reviews: IncomeReview[]) {
+function priceFixedRoundTrips(tasks: RatedTask[], reviews: IncomeReview[]) {
   const sheets = new Map<string, RatedTask[]>();
   const dayBatches = new Map<string, Set<number>>();
   const reviewedAnchors = new Set(reviews.filter(review => review.mode === "included").map(review => review.includedTaskId));
   for (const task of tasks) {
-    if (!task.id || task.importId == null || !isDavidR002Task(task)) continue;
+    const code = fixedRoundTripCode(task);
+    if (!task.id || task.importId == null || !code) continue;
     const key = JSON.stringify([task.importId, task.sheetName, task.section, task.driverName]);
     const sheet = sheets.get(key) || [];
     sheet.push(task);
     sheets.set(key, sheet);
-    const batches = dayBatches.get(task.workDate) || new Set<number>();
+    const dayKey = code + ":" + task.workDate;
+    const batches = dayBatches.get(dayKey) || new Set<number>();
     batches.add(task.importId);
-    dayBatches.set(task.workDate, batches);
+    dayBatches.set(dayKey, batches);
   }
   for (const sheet of sheets.values()) {
+    const code = fixedRoundTripCode(sheet[0])!;
     let trip: RatedTask[] = [];
     for (const leg of sheet.sort((a, b) => a.sourceRow - b.sourceRow)) {
       const from = normalizeIncomeText(leg.fromLocation), to = normalizeIncomeText(leg.toLocation);
       const previous = trip.at(-1);
       if (previous && (leg.sourceRow !== previous.sourceRow + 1 || leg.workDate < previous.workDate ||
         from !== normalizeIncomeText(previous.toLocation))) trip = [];
-      if (!from || !to || dayBatches.get(leg.workDate)!.size > 1) { trip = []; continue; }
-      if (!trip.length && (from !== davidBase || to === davidBase)) continue;
+      if (!from || !to || dayBatches.get(code + ":" + leg.workDate)!.size > 1) { trip = []; continue; }
+      if (!trip.length && (from !== tripBase || to === tripBase)) continue;
       trip.push(leg);
-      if (to !== davidBase) continue;
+      if (to !== tripBase) continue;
       const [anchor, ...rest] = trip;
       trip = [];
       if (anchor.income.review && anchor.income.review.mode !== "manual") continue;
       if (rest.some(task => reviewedAnchors.has(task.id!) || (task.income.review &&
         (task.income.review.mode !== "included" || task.income.review.includedTaskId !== anchor.id)))) continue;
       if (!anchor.income.review) Object.assign(anchor.income, {
-        status: "priced", workLabel: "R002", amount: davidTripAmount, source: "rule", billingBasis: "trip",
-        basis: `David Gao R002 · $${davidTripAmount.toFixed(2)} / 趟（${davidBase} 往返，${rest.length + 1} 段）`,
+        status: "priced", workLabel: code, amount: roundTripAmount, source: "rule", billingBasis: "trip",
+        basis: `${anchor.driverName} ${code} · $${roundTripAmount.toFixed(2)} / 趟（${tripBase} 往返，${rest.length + 1} 段）`,
       } satisfies Partial<TaskIncome>);
       for (const leg of rest) if (!leg.income.review) Object.assign(leg.income, {
-        status: "included", workLabel: "R002", amount: 0, source: "included", includedTaskId: anchor.id!,
-        basis: `已含在 ${anchor.workDate} R002 整趟收入中 · 原表第 ${anchor.sourceRow} 行`,
+        status: "included", workLabel: code, amount: 0, source: "included", includedTaskId: anchor.id!,
+        basis: `已含在 ${anchor.workDate} ${code} 整趟收入中 · 原表第 ${anchor.sourceRow} 行`,
       } satisfies Partial<TaskIncome>);
     }
   }
@@ -225,7 +237,7 @@ export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews:
       income.status = "priced"; income.amount = review.amount; income.source = "manual"; income.basis = `人工核定${review.note ? `：${review.note}` : ""}`;
     } else if (review?.mode === "included") {
       income.basis = "等待主作业收入确认";
-    } else if (!review && isDavidR002Task(task)) {
+    } else if (!review && fixedRoundTripCode(task)) {
       income.basis = "尚未确认完整的 94587 往返，或有路段需人工核对";
     } else if (!workLabel) {
       income.basis = "原表未注明作业类型，需核对作业";
@@ -273,7 +285,7 @@ export function priceDriverDays(days: DriverDay[], rules: IncomeRule[], reviews:
     basis: `已含在 ${departure.workDate} SCK8 整趟收入中 · 原表第 ${departure.sourceRow} 行`,
   } satisfies Partial<TaskIncome>);
   priceR001Trips(tasks, rules, vehicles);
-  priceDavidR002Trips(tasks, reviews);
+  priceFixedRoundTrips(tasks, reviews);
   for (const task of tasks) {
     if (task.income.review?.mode !== "included") continue;
     const anchor = byId.get(task.income.includedTaskId || "");
